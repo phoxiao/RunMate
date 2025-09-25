@@ -4,6 +4,10 @@
   "description": "Auto-discover and manage shell scripts in VS Code",
   "version": "1.0.0",
   "publisher": "runmate",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/phoxiao/RunMate"
+  },
   "engines": {
     "vscode": "^1.74.0"
   },
