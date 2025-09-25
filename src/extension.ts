@@ -67,7 +67,8 @@ export function activate(context: vscode.ExtensionContext) {
                 }
 
                 await executor.executeScript(scriptItem.filePath, input || '');
-                scriptTreeProvider.refresh();
+                // Delay refresh slightly to allow execution status to update
+                setTimeout(() => scriptTreeProvider.refresh(), 100);
             }
         })
     );
@@ -80,7 +81,8 @@ export function activate(context: vscode.ExtensionContext) {
             }
 
             await executor.stopScript(scriptItem.filePath);
-            scriptTreeProvider.refresh();
+            // Delay refresh slightly to ensure status is updated
+            setTimeout(() => scriptTreeProvider.refresh(), 100);
         })
     );
 

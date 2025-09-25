@@ -5,6 +5,7 @@ import { Executor, ExecutionStatus } from './executor';
 export class ScriptTreeProvider implements vscode.TreeDataProvider<ScriptItem> {
     private _onDidChangeTreeData: vscode.EventEmitter<ScriptItem | undefined | null | void> = new vscode.EventEmitter<ScriptItem | undefined | null | void>();
     readonly onDidChangeTreeData: vscode.Event<ScriptItem | undefined | null | void> = this._onDidChangeTreeData.event;
+    private itemCache: Map<string, ScriptItem> = new Map();
 
     constructor(
         private scriptScanner: ScriptScanner,
@@ -30,20 +31,33 @@ export class ScriptTreeProvider implements vscode.TreeDataProvider<ScriptItem> {
         if (element) {
             if (element.contextValue === 'directory') {
                 const scripts = this.scriptScanner.getScriptsByDirectory(element.directory || '');
-                return Promise.resolve(
-                    scripts.map(script => new ScriptItem(
-                        script.name,
-                        script.path,
-                        undefined,
-                        this.getScriptStatus(script.path),
-                        vscode.TreeItemCollapsibleState.None
-                    ))
-                );
+                const items: ScriptItem[] = [];
+                const seen = new Set<string>();
+
+                for (const script of scripts) {
+                    if (!seen.has(script.path)) {
+                        seen.add(script.path);
+                        const cacheKey = `script_${script.path}`;
+                        const item = new ScriptItem(
+                            script.name,
+                            script.path,
+                            undefined,
+                            this.getScriptStatus(script.path),
+                            vscode.TreeItemCollapsibleState.None
+                        );
+                        this.itemCache.set(cacheKey, item);
+                        items.push(item);
+                    }
+                }
+                return Promise.resolve(items);
             }
             return Promise.resolve([]);
         } else {
+            this.itemCache.clear();
             const allScripts = this.scriptScanner.getScripts();
             const items: ScriptItem[] = [];
+            const seenScripts = new Set<string>();
+            const seenDirs = new Set<string>();
 
             const sortedDirs = Array.from(allScripts.keys()).sort((a, b) => {
                 if (a === 'root') return -1;
@@ -56,24 +70,36 @@ export class ScriptTreeProvider implements vscode.TreeDataProvider<ScriptItem> {
                 if (scripts.length === 0) continue;
 
                 if (dir === 'root') {
-                    scripts.forEach(script => {
-                        items.push(new ScriptItem(
-                            script.name,
-                            script.path,
-                            undefined,
-                            this.getScriptStatus(script.path),
-                            vscode.TreeItemCollapsibleState.None
-                        ));
-                    });
+                    for (const script of scripts) {
+                        if (!seenScripts.has(script.path)) {
+                            seenScripts.add(script.path);
+                            const cacheKey = `script_${script.path}`;
+                            const item = new ScriptItem(
+                                script.name,
+                                script.path,
+                                undefined,
+                                this.getScriptStatus(script.path),
+                                vscode.TreeItemCollapsibleState.None
+                            );
+                            this.itemCache.set(cacheKey, item);
+                            items.push(item);
+                        }
+                    }
                 } else {
-                    const displayName = dir.split('/').pop() || dir;
-                    items.push(new ScriptItem(
-                        displayName,
-                        '',
-                        dir,
-                        'directory',
-                        vscode.TreeItemCollapsibleState.Expanded
-                    ));
+                    if (!seenDirs.has(dir)) {
+                        seenDirs.add(dir);
+                        const displayName = dir.split('/').pop() || dir;
+                        const cacheKey = `dir_${dir}`;
+                        const item = new ScriptItem(
+                            displayName,
+                            '',
+                            dir,
+                            'directory',
+                            vscode.TreeItemCollapsibleState.Expanded
+                        );
+                        this.itemCache.set(cacheKey, item);
+                        items.push(item);
+                    }
                 }
             }
 

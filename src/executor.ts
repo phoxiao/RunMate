@@ -179,23 +179,40 @@ export class Executor implements vscode.Disposable {
     }
 
     private monitorScriptExecution(scriptPath: string): void {
-        setTimeout(() => {
-            const runningScript = this.runningScripts.get(scriptPath);
-            if (runningScript && runningScript.status === ExecutionStatus.Running) {
-                const checkInterval = setInterval(() => {
-                    if (!this.terminals.has(scriptPath)) {
-                        clearInterval(checkInterval);
-                        this.updateScriptStatus(scriptPath, ExecutionStatus.Success);
-                        this.runningScripts.delete(scriptPath);
-                        this.updateStatusBar();
-                    }
-                }, 1000);
+        // Store a reference to check later
+        const runningScript = this.runningScripts.get(scriptPath);
+        if (!runningScript) {
+            return;
+        }
 
-                setTimeout(() => {
-                    clearInterval(checkInterval);
-                }, 60000);
+        // Set a reasonable timeout for monitoring (5 minutes max)
+        const maxMonitorTime = 5 * 60 * 1000;
+        const checkInterval = 1000;
+        let elapsedTime = 0;
+
+        const intervalId = setInterval(() => {
+            elapsedTime += checkInterval;
+
+            // Check if the script is still in our tracking
+            if (!this.runningScripts.has(scriptPath)) {
+                clearInterval(intervalId);
+                return;
             }
-        }, 2000);
+
+            // Check if terminal was closed
+            if (!this.terminals.has(scriptPath)) {
+                this.updateScriptStatus(scriptPath, ExecutionStatus.Success);
+                this.runningScripts.delete(scriptPath);
+                this.updateStatusBar();
+                clearInterval(intervalId);
+                return;
+            }
+
+            // Stop monitoring after max time
+            if (elapsedTime >= maxMonitorTime) {
+                clearInterval(intervalId);
+            }
+        }, checkInterval);
     }
 
     private updateScriptStatus(scriptPath: string, status: ExecutionStatus): void {

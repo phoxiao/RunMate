@@ -118,6 +118,17 @@ export class ScriptScanner implements vscode.Disposable {
         const paths = workspaceFolders.map(folder => folder.uri.fsPath);
         const ignorePatterns = this.configManager.getIgnoreDirectories();
 
+        let debounceTimer: NodeJS.Timeout | undefined;
+        const debouncedOnChange = () => {
+            if (debounceTimer) {
+                clearTimeout(debounceTimer);
+            }
+            debounceTimer = setTimeout(async () => {
+                await this.scanScripts();
+                onChange();
+            }, 500);
+        };
+
         this.watcher = chokidar.watch('**/*.sh', {
             cwd: paths[0],
             ignored: ignorePatterns.map(dir => `**/${dir}/**`),
@@ -131,18 +142,9 @@ export class ScriptScanner implements vscode.Disposable {
         });
 
         this.watcher
-            .on('add', async () => {
-                await this.scanScripts();
-                onChange();
-            })
-            .on('unlink', async () => {
-                await this.scanScripts();
-                onChange();
-            })
-            .on('change', async () => {
-                await this.scanScripts();
-                onChange();
-            });
+            .on('add', debouncedOnChange)
+            .on('unlink', debouncedOnChange)
+            .on('change', debouncedOnChange);
     }
 
     public stopWatching(): void {
