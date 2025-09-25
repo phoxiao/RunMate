@@ -13,30 +13,26 @@ let configManager: ConfigManager;
 export async function activate(context: vscode.ExtensionContext) {
     console.log('RunMate extension is now active');
 
-    configManager = new ConfigManager();
-    const securityChecker = new SecurityChecker(configManager);
-    executor = new Executor(context, securityChecker, configManager);
-    scriptScanner = new ScriptScanner(configManager);
+    try {
+        // Initialize all services first
+        configManager = new ConfigManager();
+        const securityChecker = new SecurityChecker(configManager);
+        executor = new Executor(context, securityChecker, configManager);
+        scriptScanner = new ScriptScanner(configManager);
 
-    // Wait for initial scan to complete
-    await scriptScanner.scanScripts();
+        // Register ALL commands FIRST, before creating tree view
+        // This ensures commands exist when the tree view tries to use them
 
-    scriptTreeProvider = new ScriptTreeProvider(scriptScanner, executor);
+        const refreshCommand = vscode.commands.registerCommand('runmate.refreshScripts', () => {
+            console.log('RunMate: Manual refresh triggered');
+            if (scriptTreeProvider) {
+                scriptTreeProvider.refresh();
+            }
+        });
+        context.subscriptions.push(refreshCommand);
+        console.log('RunMate: Refresh command registered');
 
-    const treeView = vscode.window.createTreeView('runmate.scriptView', {
-        treeDataProvider: scriptTreeProvider,
-        showCollapseAll: true,
-        canSelectMany: false
-    });
-
-    // Listen for script status changes to refresh the tree
-    executor.onStatusChanged((scriptPath) => {
-        console.log(`RunMate: Status changed for script: ${scriptPath}, refreshing tree`);
-        scriptTreeProvider.refresh();
-    });
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('runmate.runScript', async (scriptItem) => {
+        const runScriptCommand = vscode.commands.registerCommand('runmate.runScript', async (scriptItem) => {
             if (!scriptItem) {
                 vscode.window.showErrorMessage('No script selected');
                 return;
@@ -97,11 +93,11 @@ export async function activate(context: vscode.ExtensionContext) {
                 await executor.executeScript(scriptItem.filePath, input || '');
                 // Refresh will be triggered by executor's onStatusChanged event
             }
-        })
-    );
+        });
+        context.subscriptions.push(runScriptCommand);
+        console.log('RunMate: Run script command registered');
 
-    context.subscriptions.push(
-        vscode.commands.registerCommand('runmate.stopScript', async (scriptItem) => {
+        const stopScriptCommand = vscode.commands.registerCommand('runmate.stopScript', async (scriptItem) => {
             if (!scriptItem) {
                 vscode.window.showErrorMessage('No script selected');
                 return;
@@ -109,27 +105,21 @@ export async function activate(context: vscode.ExtensionContext) {
 
             await executor.stopScript(scriptItem.filePath);
             // Refresh will be triggered by executor's onStatusChanged event
-        })
-    );
+        });
+        context.subscriptions.push(stopScriptCommand);
+        console.log('RunMate: Stop script command registered');
 
-    context.subscriptions.push(
-        vscode.commands.registerCommand('runmate.refreshScripts', () => {
-            scriptTreeProvider.refresh();
-        })
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('runmate.openScript', (scriptItem) => {
+        const openScriptCommand = vscode.commands.registerCommand('runmate.openScript', (scriptItem) => {
             if (scriptItem) {
                 vscode.workspace.openTextDocument(scriptItem.filePath).then(doc => {
                     vscode.window.showTextDocument(doc);
                 });
             }
-        })
-    );
+        });
+        context.subscriptions.push(openScriptCommand);
+        console.log('RunMate: Open script command registered');
 
-    context.subscriptions.push(
-        vscode.commands.registerCommand('runmate.openConfig', async () => {
+        const openConfigCommand = vscode.commands.registerCommand('runmate.openConfig', async () => {
             const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
             if (!workspaceFolder) {
                 vscode.window.showErrorMessage('No workspace folder open');
@@ -157,28 +147,65 @@ export async function activate(context: vscode.ExtensionContext) {
 
             const doc = await vscode.workspace.openTextDocument(configPath);
             await vscode.window.showTextDocument(doc);
-        })
-    );
+        });
+        context.subscriptions.push(openConfigCommand);
+        console.log('RunMate: Open config command registered');
 
+        console.log('RunMate: All commands registered successfully');
 
-    const config = vscode.workspace.getConfiguration('runmate');
-    if (config.get<boolean>('autoRefresh')) {
-        scriptScanner.startWatching(() => {
+        // NOW create tree provider and tree view AFTER commands are registered
+        scriptTreeProvider = new ScriptTreeProvider(scriptScanner, executor);
+
+        // Register the tree view
+        const treeView = vscode.window.createTreeView('runmate.scriptView', {
+            treeDataProvider: scriptTreeProvider,
+            showCollapseAll: true,
+            canSelectMany: false
+        });
+        context.subscriptions.push(treeView);
+        console.log('RunMate: Tree view created successfully');
+
+        // Perform initial scan
+        await scriptScanner.scanScripts();
+        console.log('RunMate: Initial scan completed');
+
+        // Listen for script status changes to refresh the tree
+        executor.onStatusChanged((scriptPath) => {
+            console.log(`RunMate: Status changed for script: ${scriptPath}, refreshing tree`);
             scriptTreeProvider.refresh();
         });
-    }
 
-    treeView.onDidChangeSelection(e => {
-        if (e.selection.length > 0) {
-            const item = e.selection[0];
-            if (item.contextValue === 'script' || item.contextValue === 'running') {
-                vscode.commands.executeCommand('runmate.openScript', item);
-            }
+        // Setup auto-refresh if enabled
+        const config = vscode.workspace.getConfiguration('runmate');
+        if (config.get<boolean>('autoRefresh')) {
+            scriptScanner.startWatching(() => {
+                scriptTreeProvider.refresh();
+            });
         }
-    });
 
-    context.subscriptions.push(treeView);
-    context.subscriptions.push(scriptScanner);
+        // Handle tree view selection
+        treeView.onDidChangeSelection(e => {
+            if (e.selection.length > 0) {
+                const item = e.selection[0];
+                if (item.contextValue === 'script' || item.contextValue === 'running') {
+                    vscode.commands.executeCommand('runmate.openScript', item);
+                }
+            }
+        });
+
+        context.subscriptions.push(scriptScanner);
+
+        // Trigger initial refresh after everything is set up
+        setTimeout(() => {
+            scriptTreeProvider.refresh();
+        }, 500);
+
+        console.log('RunMate: Extension activation completed successfully');
+
+    } catch (error) {
+        console.error('RunMate: Failed to activate extension', error);
+        vscode.window.showErrorMessage(`RunMate failed to activate: ${error}`);
+    }
 }
 
 export function deactivate() {
