@@ -17,7 +17,12 @@ export class ScriptScanner implements vscode.Disposable {
 
     constructor(configManager: ConfigManager) {
         this.configManager = configManager;
-        this.scanScripts();
+        // Initialize with immediate scan
+        this.initializeScripts();
+    }
+
+    private async initializeScripts(): Promise<void> {
+        await this.scanScripts();
     }
 
     public async scanScripts(): Promise<void> {

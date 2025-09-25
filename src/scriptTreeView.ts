@@ -10,9 +10,16 @@ export class ScriptTreeProvider implements vscode.TreeDataProvider<ScriptItem> {
     constructor(
         private scriptScanner: ScriptScanner,
         private executor: Executor
-    ) {}
+    ) {
+        // Trigger initial load
+        setTimeout(() => {
+            this._onDidChangeTreeData.fire();
+        }, 100);
+    }
 
     refresh(): void {
+        // Clear cache to ensure fresh status updates
+        this.itemCache.clear();
         this.scriptScanner.scanScripts().then(() => {
             this._onDidChangeTreeData.fire();
         });
@@ -37,7 +44,7 @@ export class ScriptTreeProvider implements vscode.TreeDataProvider<ScriptItem> {
                 for (const script of scripts) {
                     if (!seen.has(script.path)) {
                         seen.add(script.path);
-                        const cacheKey = `script_${script.path}`;
+                        // Don't cache items with dynamic status
                         const item = new ScriptItem(
                             script.name,
                             script.path,
@@ -45,7 +52,6 @@ export class ScriptTreeProvider implements vscode.TreeDataProvider<ScriptItem> {
                             this.getScriptStatus(script.path),
                             vscode.TreeItemCollapsibleState.None
                         );
-                        this.itemCache.set(cacheKey, item);
                         items.push(item);
                     }
                 }
@@ -55,6 +61,16 @@ export class ScriptTreeProvider implements vscode.TreeDataProvider<ScriptItem> {
         } else {
             this.itemCache.clear();
             const allScripts = this.scriptScanner.getScripts();
+
+            // If no scripts found, try scanning again
+            if (allScripts.size === 0) {
+                this.scriptScanner.scanScripts().then(() => {
+                    // Trigger refresh after scan completes
+                    setTimeout(() => this._onDidChangeTreeData.fire(), 50);
+                });
+                return Promise.resolve([]);
+            }
+
             const items: ScriptItem[] = [];
             const seenScripts = new Set<string>();
             const seenDirs = new Set<string>();
@@ -73,7 +89,7 @@ export class ScriptTreeProvider implements vscode.TreeDataProvider<ScriptItem> {
                     for (const script of scripts) {
                         if (!seenScripts.has(script.path)) {
                             seenScripts.add(script.path);
-                            const cacheKey = `script_${script.path}`;
+                            // Always create fresh items to get current status
                             const item = new ScriptItem(
                                 script.name,
                                 script.path,
@@ -81,7 +97,6 @@ export class ScriptTreeProvider implements vscode.TreeDataProvider<ScriptItem> {
                                 this.getScriptStatus(script.path),
                                 vscode.TreeItemCollapsibleState.None
                             );
-                            this.itemCache.set(cacheKey, item);
                             items.push(item);
                         }
                     }

@@ -10,19 +10,29 @@ let scriptScanner: ScriptScanner;
 let executor: Executor;
 let configManager: ConfigManager;
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
     console.log('RunMate extension is now active');
 
     configManager = new ConfigManager();
     const securityChecker = new SecurityChecker(configManager);
     executor = new Executor(context, securityChecker, configManager);
     scriptScanner = new ScriptScanner(configManager);
+
+    // Wait for initial scan to complete
+    await scriptScanner.scanScripts();
+
     scriptTreeProvider = new ScriptTreeProvider(scriptScanner, executor);
 
     const treeView = vscode.window.createTreeView('runmate.scriptView', {
         treeDataProvider: scriptTreeProvider,
         showCollapseAll: true,
         canSelectMany: false
+    });
+
+    // Listen for script status changes to refresh the tree
+    executor.onStatusChanged((scriptPath) => {
+        console.log(`RunMate: Status changed for script: ${scriptPath}, refreshing tree`);
+        scriptTreeProvider.refresh();
     });
 
     context.subscriptions.push(
@@ -55,20 +65,37 @@ export function activate(context: vscode.ExtensionContext) {
 
                 const confirmExecution = config.get<boolean>('confirmBeforeExecute', true);
                 if (confirmExecution) {
-                    const confirmation = await vscode.window.showWarningMessage(
-                        `Execute script: ${scriptItem.filePath}${input ? ` with parameters: ${input}` : ''}?`,
-                        'Execute',
-                        'Cancel'
+                    const scriptName = scriptItem.label;
+                    const scriptPath = scriptItem.filePath;
+                    const paramText = input ? ` with parameters: ${input}` : '';
+
+                    const confirmation = await vscode.window.showQuickPick(
+                        [
+                            {
+                                label: '$(play) Execute',
+                                description: 'Run the script now',
+                                detail: `${scriptPath}${paramText}`
+                            },
+                            {
+                                label: '$(x) Cancel',
+                                description: 'Do not execute the script',
+                                detail: 'Script execution will be cancelled'
+                            }
+                        ],
+                        {
+                            placeHolder: `Execute script: ${scriptName}?`,
+                            title: 'Script Execution Confirmation',
+                            ignoreFocusOut: true
+                        }
                     );
 
-                    if (confirmation !== 'Execute') {
+                    if (!confirmation || confirmation.label.includes('Cancel')) {
                         return;
                     }
                 }
 
                 await executor.executeScript(scriptItem.filePath, input || '');
-                // Delay refresh slightly to allow execution status to update
-                setTimeout(() => scriptTreeProvider.refresh(), 100);
+                // Refresh will be triggered by executor's onStatusChanged event
             }
         })
     );
@@ -81,8 +108,7 @@ export function activate(context: vscode.ExtensionContext) {
             }
 
             await executor.stopScript(scriptItem.filePath);
-            // Delay refresh slightly to ensure status is updated
-            setTimeout(() => scriptTreeProvider.refresh(), 100);
+            // Refresh will be triggered by executor's onStatusChanged event
         })
     );
 
@@ -133,6 +159,7 @@ export function activate(context: vscode.ExtensionContext) {
             await vscode.window.showTextDocument(doc);
         })
     );
+
 
     const config = vscode.workspace.getConfiguration('runmate');
     if (config.get<boolean>('autoRefresh')) {
