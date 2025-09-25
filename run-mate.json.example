@@ -1,0 +1,37 @@
+{
+  "ignoreDirectories": [
+    "node_modules",
+    ".git",
+    "dist",
+    "out",
+    "build",
+    ".vscode-test"
+  ],
+  "defaultWorkingDirectory": "./",
+  "customSort": [
+    "deploy.sh",
+    "build.sh",
+    "test.sh",
+    "setup.sh"
+  ],
+  "dangerousCommandsWhitelist": [
+    "rm -rf ./tmp",
+    "rm -rf ./build"
+  ],
+  "dangerousCommandsBlacklist": [
+    "rm -rf /",
+    "rm -rf /*",
+    "mkfs",
+    ":(){:|:&};:",
+    "dd if=/dev/zero",
+    "dd if=/dev/random",
+    "chmod -R 777 /",
+    "sudo rm -rf",
+    "format c:",
+    "del /s /q c:\\",
+    "shutdown",
+    "reboot",
+    "killall",
+    "pkill -9"
+  ]
+}

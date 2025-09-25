@@ -1,0 +1,190 @@
+{
+  "name": "runmate",
+  "displayName": "RunMate",
+  "description": "Auto-discover and manage shell scripts in VS Code",
+  "version": "1.0.0",
+  "publisher": "runmate",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "shell",
+    "script",
+    "bash",
+    "sh",
+    "execute",
+    "runner"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "runmate",
+          "title": "RunMate",
+          "icon": "$(terminal)"
+        }
+      ]
+    },
+    "views": {
+      "runmate": [
+        {
+          "id": "runmate.scriptView",
+          "name": "Shell Scripts",
+          "icon": "$(terminal)",
+          "contextualTitle": "RunMate Scripts"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "runmate.runScript",
+        "title": "Run Script",
+        "icon": "$(play)"
+      },
+      {
+        "command": "runmate.stopScript",
+        "title": "Stop Script",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "runmate.refreshScripts",
+        "title": "Refresh Scripts",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "runmate.openScript",
+        "title": "Open Script"
+      },
+      {
+        "command": "runmate.openConfig",
+        "title": "Open RunMate Configuration"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "runmate.refreshScripts",
+          "when": "view == runmate.scriptView",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "runmate.runScript",
+          "when": "view == runmate.scriptView && viewItem == script",
+          "group": "inline"
+        },
+        {
+          "command": "runmate.stopScript",
+          "when": "view == runmate.scriptView && viewItem == running",
+          "group": "inline"
+        },
+        {
+          "command": "runmate.openScript",
+          "when": "view == runmate.scriptView && viewItem == script"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "RunMate",
+      "properties": {
+        "runmate.ignoreDirectories": {
+          "type": "array",
+          "default": [
+            "node_modules",
+            ".git",
+            "dist",
+            "out",
+            "build"
+          ],
+          "description": "Directories to ignore when scanning for shell scripts",
+          "items": {
+            "type": "string"
+          }
+        },
+        "runmate.defaultWorkingDirectory": {
+          "type": "string",
+          "default": "./",
+          "description": "Default working directory for script execution"
+        },
+        "runmate.customSort": {
+          "type": "array",
+          "default": [],
+          "description": "Custom sort order for scripts (specify script names)",
+          "items": {
+            "type": "string"
+          }
+        },
+        "runmate.dangerousCommandsWhitelist": {
+          "type": "array",
+          "default": [],
+          "description": "Dangerous commands that are allowed without confirmation",
+          "items": {
+            "type": "string"
+          }
+        },
+        "runmate.dangerousCommandsBlacklist": {
+          "type": "array",
+          "default": [
+            "rm -rf /",
+            "rm -rf /*",
+            "mkfs",
+            ":(){:|:&};:",
+            "dd if=/dev/zero",
+            "chmod -R 777 /",
+            "sudo rm -rf",
+            "format c:"
+          ],
+          "description": "Dangerous commands that require confirmation",
+          "items": {
+            "type": "string"
+          }
+        },
+        "runmate.autoRefresh": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically refresh script list when files change"
+        },
+        "runmate.confirmBeforeExecute": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show confirmation dialog before executing scripts"
+        },
+        "runmate.rememberLastParameters": {
+          "type": "boolean",
+          "default": true,
+          "description": "Remember the last parameters used for each script"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "16.x",
+    "@types/vscode": "^1.74.0",
+    "@typescript-eslint/eslint-plugin": "^5.53.0",
+    "@typescript-eslint/parser": "^5.53.0",
+    "@vscode/test-electron": "^2.2.3",
+    "@vscode/vsce": "^2.18.0",
+    "eslint": "^8.34.0",
+    "typescript": "^4.9.5"
+  },
+  "dependencies": {
+    "chokidar": "^3.5.3",
+    "fs-extra": "^11.1.0"
+  }
+}
