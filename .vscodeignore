@@ -18,6 +18,8 @@ specs/**
 !README.md
 !CHANGELOG.md
 !LICENSE
+!icon.png
+icon.svg
 test/**
 .prettierrc
 .eslintignore
