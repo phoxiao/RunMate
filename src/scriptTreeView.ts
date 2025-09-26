@@ -295,7 +295,8 @@ export class ScriptItem extends vscode.TreeItem {
                     this.description = 'Failed';
                     break;
                 default:
-                    this.iconPath = new vscode.ThemeIcon('file-code');
+                    // Use file icon for shell scripts - typically better aligned
+                    this.iconPath = new vscode.ThemeIcon('file');
                     break;
             }
         }

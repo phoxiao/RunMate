@@ -239,7 +239,7 @@ export class ScriptWebviewProvider implements vscode.WebviewViewProvider {
                     border: 1px solid var(--vscode-input-border);
                     border-radius: 4px;
                     padding: 0 8px;
-                    height: 28px;
+                    height: 32px;
                 }
 
                 .search-box:focus-within {
@@ -251,6 +251,9 @@ export class ScriptWebviewProvider implements vscode.WebviewViewProvider {
                     opacity: 0.5;
                     margin-right: 6px;
                     font-size: 14px;
+                    line-height: 1;
+                    display: flex;
+                    align-items: center;
                 }
 
                 .search-input {
@@ -261,8 +264,10 @@ export class ScriptWebviewProvider implements vscode.WebviewViewProvider {
                     outline: none;
                     font-family: var(--vscode-font-family);
                     font-size: var(--vscode-font-size);
-                    height: 24px;
-                    line-height: 24px;
+                    padding: 0;
+                    margin: 0;
+                    height: 100%;
+                    line-height: normal;
                 }
 
                 .search-input::placeholder {
@@ -275,10 +280,13 @@ export class ScriptWebviewProvider implements vscode.WebviewViewProvider {
                     color: var(--vscode-foreground);
                     opacity: 0.5;
                     cursor: pointer;
-                    padding: 4px;
-                    font-size: 16px;
+                    padding: 0 4px;
+                    font-size: 18px;
                     display: none;
                     line-height: 1;
+                    height: 100%;
+                    align-items: center;
+                    justify-content: center;
                 }
 
                 .clear-button:hover {
@@ -303,9 +311,10 @@ export class ScriptWebviewProvider implements vscode.WebviewViewProvider {
                 .directory-header {
                     display: flex;
                     align-items: center;
-                    padding: 4px 8px;
+                    padding: 6px 8px;
                     cursor: pointer;
                     user-select: none;
+                    min-height: 24px;
                 }
 
                 .directory-header:hover {
@@ -315,19 +324,28 @@ export class ScriptWebviewProvider implements vscode.WebviewViewProvider {
                 .directory-icon {
                     margin-right: 6px;
                     opacity: 0.8;
+                    line-height: 1;
+                    display: flex;
+                    align-items: center;
+                    height: 16px;
+                    font-size: 14px;
                 }
 
                 .directory-name {
                     flex: 1;
                     font-weight: 500;
+                    line-height: 1.4;
+                    display: flex;
+                    align-items: center;
                 }
 
                 .script-item {
                     display: flex;
                     align-items: center;
-                    padding: 4px 8px 4px 24px;
+                    padding: 3px 8px 3px 24px;
                     cursor: pointer;
                     position: relative;
+                    min-height: 24px;
                 }
 
                 .script-item:hover {
@@ -338,10 +356,17 @@ export class ScriptWebviewProvider implements vscode.WebviewViewProvider {
                     margin-right: 6px;
                     opacity: 0.8;
                     font-size: 14px;
+                    line-height: 1;
+                    display: flex;
+                    align-items: center;
+                    height: 16px;
                 }
 
                 .script-name {
                     flex: 1;
+                    line-height: 1.4;
+                    display: flex;
+                    align-items: center;
                 }
 
                 .script-actions {
@@ -395,26 +420,6 @@ export class ScriptWebviewProvider implements vscode.WebviewViewProvider {
                     opacity: 0.6;
                 }
 
-                .toolbar {
-                    display: flex;
-                    justify-content: flex-end;
-                    padding: 4px 8px;
-                    border-top: 1px solid var(--vscode-panel-border);
-                }
-
-                .toolbar-button {
-                    background: transparent;
-                    border: none;
-                    color: var(--vscode-foreground);
-                    opacity: 0.6;
-                    cursor: pointer;
-                    padding: 4px 8px;
-                    font-size: 14px;
-                }
-
-                .toolbar-button:hover {
-                    opacity: 1;
-                }
             </style>
         </head>
         <body>
@@ -424,7 +429,7 @@ export class ScriptWebviewProvider implements vscode.WebviewViewProvider {
                     <input
                         type="text"
                         class="search-input"
-                        placeholder="Type to search scripts (fuzzy matching)"
+                        placeholder="Type to search scripts"
                         id="searchInput"
                     />
                     <button class="clear-button" id="clearButton" title="Clear search">×</button>
@@ -435,11 +440,6 @@ export class ScriptWebviewProvider implements vscode.WebviewViewProvider {
                 <div class="empty-state">Loading scripts...</div>
             </div>
 
-            <div class="toolbar">
-                <button class="toolbar-button" onclick="refresh()" title="Refresh scripts">
-                    ↻ Refresh
-                </button>
-            </div>
 
             <script>
                 const vscode = acquireVsCodeApi();
@@ -592,9 +592,6 @@ export class ScriptWebviewProvider implements vscode.WebviewViewProvider {
                     vscode.postMessage({ type: 'openScript', scriptPath: path });
                 }
 
-                function refresh() {
-                    vscode.postMessage({ type: 'refresh' });
-                }
 
                 // Initial state
                 updateClearButton();

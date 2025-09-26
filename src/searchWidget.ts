@@ -41,7 +41,7 @@ export class SearchWidget {
 
     private showSearchInput(): void {
         const input = vscode.window.createInputBox();
-        input.placeholder = 'Type to search scripts (fuzzy matching)';
+        input.placeholder = 'Type to search scripts';
         input.value = this.searchQuery;
         input.title = 'Search Scripts';
 
