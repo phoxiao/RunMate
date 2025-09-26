@@ -146,6 +146,50 @@ export async function activate(context: vscode.ExtensionContext) {
         console.log('RunMate: Open script command registered');
 
 
+        const deleteScriptCommand = vscode.commands.registerCommand('runmate.deleteScript', async (scriptItem) => {
+            if (!scriptItem || !scriptItem.filePath) {
+                vscode.window.showErrorMessage('No script selected');
+                return;
+            }
+
+            const scriptName = scriptItem.label;
+            const scriptPath = scriptItem.filePath;
+
+            // Show confirmation dialog
+            const confirmation = await vscode.window.showWarningMessage(
+                `Are you sure you want to delete "${scriptName}"?\n\nThis action cannot be undone.`,
+                { modal: true },
+                'Delete',
+                'Cancel'
+            );
+
+            if (confirmation !== 'Delete') {
+                return;
+            }
+
+            try {
+                // Delete the file using VS Code's file system API
+                const fileUri = vscode.Uri.file(scriptPath);
+                await vscode.workspace.fs.delete(fileUri);
+
+                // Show success message
+                vscode.window.showInformationMessage(`Successfully deleted: ${scriptName}`);
+
+                // Refresh the script list
+                await scriptScanner.scanScripts();
+                if (scriptWebviewProvider) {
+                    scriptWebviewProvider.refresh();
+                }
+
+                console.log(`RunMate: Deleted script: ${scriptPath}`);
+            } catch (error) {
+                vscode.window.showErrorMessage(`Failed to delete script: ${error}`);
+                console.error(`RunMate: Failed to delete script: ${scriptPath}`, error);
+            }
+        });
+        context.subscriptions.push(deleteScriptCommand);
+        console.log('RunMate: Delete script command registered');
+
         const openConfigCommand = vscode.commands.registerCommand('runmate.openConfig', async () => {
             const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
             if (!workspaceFolder) {

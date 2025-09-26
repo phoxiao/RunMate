@@ -55,6 +55,9 @@ export class ScriptWebviewProvider implements vscode.WebviewViewProvider {
                     await this.scriptScanner.scanScripts();
                     this.updateScriptList();
                     break;
+                case 'deleteScript':
+                    await this.deleteScript(data.scriptPath);
+                    break;
             }
         });
 
@@ -560,6 +563,7 @@ export class ScriptWebviewProvider implements vscode.WebviewViewProvider {
                                     : \`<button class="action-button" onclick="runScript('\${script.path}', event)" title="Run">▶</button>\`
                                 }
                                 <button class="action-button" onclick="openScript('\${script.path}', event)" title="Open">📝</button>
+                                <button class="action-button" onclick="deleteScript('\${script.path}', event)" title="Delete">🗑️</button>
                             </div>
                         </div>
                     \`;
@@ -592,6 +596,11 @@ export class ScriptWebviewProvider implements vscode.WebviewViewProvider {
                     vscode.postMessage({ type: 'openScript', scriptPath: path });
                 }
 
+                function deleteScript(path, event) {
+                    if (event) event.stopPropagation();
+                    vscode.postMessage({ type: 'deleteScript', scriptPath: path });
+                }
+
 
                 // Initial state
                 updateClearButton();
@@ -603,5 +612,39 @@ export class ScriptWebviewProvider implements vscode.WebviewViewProvider {
 
     public refresh(): void {
         this.updateScriptList();
+    }
+
+    private async deleteScript(scriptPath: string): Promise<void> {
+        const scriptName = path.basename(scriptPath);
+
+        // Show confirmation dialog
+        const confirmation = await vscode.window.showWarningMessage(
+            `Are you sure you want to delete "${scriptName}"?\n\nThis action cannot be undone.`,
+            { modal: true },
+            'Delete',
+            'Cancel'
+        );
+
+        if (confirmation !== 'Delete') {
+            return;
+        }
+
+        try {
+            // Delete the file using VS Code's file system API
+            const fileUri = vscode.Uri.file(scriptPath);
+            await vscode.workspace.fs.delete(fileUri);
+
+            // Show success message
+            vscode.window.showInformationMessage(`Successfully deleted: ${scriptName}`);
+
+            // Refresh the script list
+            await this.scriptScanner.scanScripts();
+            this.updateScriptList();
+
+            console.log(`RunMate: Deleted script: ${scriptPath}`);
+        } catch (error) {
+            vscode.window.showErrorMessage(`Failed to delete script: ${error}`);
+            console.error(`RunMate: Failed to delete script: ${scriptPath}`, error);
+        }
     }
 }

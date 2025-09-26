@@ -71,6 +71,11 @@
       {
         "command": "runmate.openConfig",
         "title": "Open RunMate Configuration"
+      },
+      {
+        "command": "runmate.deleteScript",
+        "title": "Delete Script",
+        "icon": "$(trash)"
       }
     ],
     "menus": {
@@ -95,6 +100,11 @@
         {
           "command": "runmate.openScript",
           "when": "view == runmate.scriptView && viewItem == script"
+        },
+        {
+          "command": "runmate.deleteScript",
+          "when": "view == runmate.scriptView && viewItem == script",
+          "group": "inline"
         }
       ]
     },

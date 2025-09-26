@@ -90,3 +90,6 @@ Test files should be co-located with source files as `*.test.ts`
 - Scan scripts for dangerous patterns (rm -rf, sudo, etc.)
 - Require user confirmation for first-time script execution
 - Display warnings for potentially destructive operations
+
+## Commit code
+- When commit code, don't include any attribution info in commit message.
