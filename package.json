@@ -39,10 +39,12 @@
     "views": {
       "runmate": [
         {
-          "id": "runmate.scriptView",
+          "type": "webview",
+          "id": "runmate.scriptWebview",
           "name": "Shell Scripts",
           "icon": "$(terminal)",
-          "contextualTitle": "RunMate Scripts"
+          "contextualTitle": "RunMate Scripts",
+          "visibility": "visible"
         }
       ]
     },
@@ -75,7 +77,7 @@
       "view/title": [
         {
           "command": "runmate.refreshScripts",
-          "when": "view == runmate.scriptView",
+          "when": "view == runmate.scriptWebview",
           "group": "navigation"
         }
       ],
@@ -96,6 +98,19 @@
         }
       ]
     },
+    "keybindings": [
+      {
+        "command": "runmate.searchScripts",
+        "key": "ctrl+shift+s",
+        "mac": "cmd+shift+s",
+        "when": "focusedView == runmate.scriptView"
+      },
+      {
+        "command": "runmate.clearSearch",
+        "key": "escape",
+        "when": "focusedView == runmate.scriptView"
+      }
+    ],
     "configuration": {
       "title": "RunMate",
       "properties": {
@@ -165,6 +180,11 @@
           "type": "boolean",
           "default": true,
           "description": "Remember the last parameters used for each script"
+        },
+        "runmate.keepTerminalOpen": {
+          "type": "boolean",
+          "default": true,
+          "description": "Keep terminal open after script execution completes"
         }
       }
     }

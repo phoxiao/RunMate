@@ -40,18 +40,60 @@ export class Executor implements vscode.Disposable {
         context.subscriptions.push(this.statusBarItem);
         context.subscriptions.push(this.onScriptStatusChanged);
 
-        // Listen for terminal close events
+        // Listen for terminal close events (when user manually closes)
         vscode.window.onDidCloseTerminal((terminal) => {
             for (const [scriptPath, runningScript] of this.runningScripts.entries()) {
                 if (runningScript.terminal === terminal) {
-                    console.log(`RunMate: Terminal closed for script: ${scriptPath}`);
-                    // Terminal closed means script completed
+                    console.log(`RunMate: Terminal manually closed by user for script: ${scriptPath}`);
+                    // User closed the terminal, clean up the tracking
                     this.handleScriptCompletion(scriptPath, ExecutionStatus.Success);
                     break; // Exit loop once we find the matching script
                 }
             }
             this.updateStatusBar();
         });
+    }
+
+    /**
+     * Check if a script contains parameter placeholders
+     * @param scriptPath Path to the script file
+     * @returns true if script uses parameters, false otherwise
+     */
+    public hasParameters(scriptPath: string): boolean {
+        try {
+            const scriptContent = fs.readFileSync(scriptPath, 'utf8');
+            // Check for common parameter patterns in shell scripts
+            // $1, $2, etc. for positional parameters
+            // $@, $* for all parameters
+            // ${1}, ${2}, etc. for explicit parameter expansion
+            // Be careful not to match environment variables like $HOME, $PATH, etc.
+            const parameterPatterns = [
+                /\$[1-9][0-9]*/,        // $1, $2, etc.
+                /\$[@*#]/,              // $@, $*, $#
+                /\$\{[1-9][0-9]*\}/,    // ${1}, ${2}, etc.
+                /\$\{[@*#]\}/           // ${@}, ${*}, ${#}
+            ];
+
+            const hasParams = parameterPatterns.some(pattern => pattern.test(scriptContent));
+            console.log(`RunMate: Checked ${scriptPath} for parameters: ${hasParams}`);
+            if (hasParams) {
+                // Log which pattern matched for debugging
+                for (const pattern of parameterPatterns) {
+                    if (pattern.test(scriptContent)) {
+                        const match = scriptContent.match(pattern);
+                        console.log(`RunMate: Found parameter pattern: ${match?.[0]} matching ${pattern}`);
+                        break;
+                    }
+                }
+            }
+            return hasParams;
+        } catch (error) {
+            console.error(`RunMate: Failed to check parameters for ${scriptPath}: ${error}`);
+            // If we can't read the script, don't assume it needs parameters
+            // This was causing issues when files couldn't be read
+            console.log(`RunMate: Defaulting to no parameters for unreadable script`);
+            return false;
+        }
     }
 
     public async executeScript(scriptPath: string, parameters: string): Promise<void> {
@@ -84,6 +126,11 @@ export class Executor implements vscode.Disposable {
 
             const workingDir = this.getWorkingDirectory(scriptPath);
 
+            // Get configuration
+            const config = vscode.workspace.getConfiguration('runmate');
+            const keepOpen = config.get<boolean>('keepTerminalOpen', true);
+
+            // Create terminal - VS Code will keep it open by default
             const terminal = vscode.window.createTerminal({
                 name: terminalName,
                 cwd: workingDir,
@@ -95,15 +142,22 @@ export class Executor implements vscode.Disposable {
             // Execute script in terminal
             const command = parameters ? `"${scriptPath}" ${parameters}` : `"${scriptPath}"`;
 
-            // Send command with exit code display
-            terminal.sendText(`${command}; EXIT_CODE=$?; echo ""; echo "Exit code: $EXIT_CODE"; exit $EXIT_CODE`);
-
             const runningScript: RunningScript = {
                 terminal: terminal,
                 status: ExecutionStatus.Running,
                 scriptPath: scriptPath,
                 startTime: Date.now()
             };
+
+            if (keepOpen) {
+                // Keep terminal open after script execution
+                // Simply run the command and show exit code
+                // We'll mark it as complete after a short delay
+                terminal.sendText(`${command}; EXIT_CODE=$?; echo ""; echo "Exit code: $EXIT_CODE"`);
+            } else {
+                // Close terminal after script execution
+                terminal.sendText(`${command}; exit $?`);
+            }
 
             this.runningScripts.set(scriptPath, runningScript);
             this.terminals.set(scriptPath, terminal);
@@ -209,21 +263,17 @@ export class Executor implements vscode.Disposable {
                 clearInterval(runningScript.intervalId);
             }
 
-            // Update status temporarily to show completion
-            this.updateScriptStatus(scriptPath, status);
+            // Immediately remove from running scripts to update status bar
+            this.runningScripts.delete(scriptPath);
+            this.terminals.delete(scriptPath);
+
+            // Update status bar to show script is no longer running
             this.updateStatusBar();
+
+            // Fire event to refresh UI
             this.onScriptStatusChanged.fire(scriptPath);
 
-            // After 3 seconds, clean up the script completely (back to idle state)
-            setTimeout(() => {
-                if (this.runningScripts.has(scriptPath)) {
-                    console.log(`RunMate: Cleaning up completed script: ${scriptPath}`);
-                    this.runningScripts.delete(scriptPath);
-                    this.terminals.delete(scriptPath);
-                    // Fire event again to refresh UI to idle state
-                    this.onScriptStatusChanged.fire(scriptPath);
-                }
-            }, 3000);
+            console.log(`RunMate: Script ${scriptPath} removed from running list, status bar updated`);
         }
     }
 
@@ -233,60 +283,56 @@ export class Executor implements vscode.Disposable {
             return;
         }
 
-        // Use VS Code's Terminal API to detect when the command completes
-        // For now, we'll use a simpler approach with terminal closure detection
-        const checkInterval = 1000;
-        const maxMonitorTime = 30 * 60 * 1000; // Monitor for max 30 minutes
-        let elapsedTime = 0;
+        const config = vscode.workspace.getConfiguration('runmate');
+        const keepOpen = config.get<boolean>('keepTerminalOpen', true);
 
-        const intervalId = setInterval(() => {
-            elapsedTime += checkInterval;
+        if (!keepOpen) {
+            // If terminal closes automatically, we'll detect it via onDidCloseTerminal
+            return;
+        }
+
+        // For terminals that stay open, we need to estimate completion time
+        // Most scripts complete within seconds
+        const estimatedCompleteTime = 2 * 1000; // 2 seconds for most scripts
+        const maxMonitorTime = 30 * 60 * 1000; // Monitor for max 30 minutes
+
+        // Mark as complete after estimated time
+        const completionTimer = setTimeout(() => {
+            if (this.runningScripts.has(scriptPath)) {
+                console.log(`RunMate: Marking script as completed: ${scriptPath}`);
+                this.handleScriptCompletion(scriptPath, ExecutionStatus.Success);
+            }
+        }, estimatedCompleteTime);
+
+        // Store timeout for cleanup
+        runningScript.intervalId = completionTimer as unknown as NodeJS.Timeout;
+
+        // Still monitor if user manually closes the terminal
+        const checkInterval = setInterval(() => {
+            // Check if terminal still exists (user manually closed it)
+            const terminalExists = vscode.window.terminals.includes(runningScript.terminal);
+            if (!terminalExists) {
+                console.log(`RunMate: Terminal manually closed by user for script: ${scriptPath}`);
+                clearTimeout(completionTimer);
+                clearInterval(checkInterval);
+                if (this.runningScripts.has(scriptPath)) {
+                    this.handleScriptCompletion(scriptPath, ExecutionStatus.Success);
+                }
+                return;
+            }
 
             // Check if script is still being tracked
             if (!this.runningScripts.has(scriptPath)) {
-                clearInterval(intervalId);
+                clearInterval(checkInterval);
+                clearTimeout(completionTimer);
                 return;
             }
+        }, 500); // Check every 500ms for faster response
 
-            // Check if terminal still exists (user closed it)
-            const terminalExists = vscode.window.terminals.includes(runningScript.terminal);
-            if (!terminalExists) {
-                console.log(`RunMate: Terminal closed for script: ${scriptPath}`);
-                this.handleScriptCompletion(scriptPath, ExecutionStatus.Success);
-                clearInterval(intervalId);
-                return;
-            }
-
-            // Stop monitoring after max time
-            if (elapsedTime >= maxMonitorTime) {
-                console.log(`RunMate: Max monitor time reached for script: ${scriptPath}`);
-                this.handleScriptCompletion(scriptPath, ExecutionStatus.Success);
-                clearInterval(intervalId);
-            }
-        }, checkInterval);
-
-        // Store interval ID for cleanup
-        runningScript.intervalId = intervalId;
-
-        // Use a shorter check for terminal shell integration (command completion)
-        // Since we added 'exit $EXIT_CODE' to the command, the terminal will close when script completes
-        const quickCheckInterval = setInterval(() => {
-            // Check if terminal still exists
-            const terminalExists = vscode.window.terminals.includes(runningScript.terminal);
-            if (!terminalExists) {
-                console.log(`RunMate: Script completed (terminal closed) for: ${scriptPath}`);
-                clearInterval(quickCheckInterval);
-                clearInterval(intervalId);
-
-                if (this.runningScripts.has(scriptPath)) {
-                    // Assume success since we can't get the actual exit code
-                    this.handleScriptCompletion(scriptPath, ExecutionStatus.Success);
-                }
-            }
-        }, 200); // Check every 200ms for faster response
-
-        // Clean up quick check after max time
-        setTimeout(() => clearInterval(quickCheckInterval), maxMonitorTime);
+        // Clean up interval after max time
+        setTimeout(() => {
+            clearInterval(checkInterval);
+        }, maxMonitorTime);
     }
 
 
@@ -307,6 +353,8 @@ export class Executor implements vscode.Disposable {
 
     private updateStatusBar(): void {
         const runningCount = this.runningScripts.size;
+        console.log(`RunMate: Updating status bar, running scripts count: ${runningCount}`);
+
         if (runningCount > 0) {
             this.statusBarItem.text = `$(sync~spin) ${runningCount} script${runningCount > 1 ? 's' : ''} running`;
             this.statusBarItem.tooltip = 'Scripts are currently running';

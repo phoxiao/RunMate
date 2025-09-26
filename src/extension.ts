@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
-import { ScriptTreeProvider } from './scriptTreeView';
+import { ScriptWebviewProvider } from './scriptWebviewProvider';
 import { ScriptScanner } from './scriptScanner';
 import { Executor } from './executor';
 import { ConfigManager } from './config';
 import { SecurityChecker } from './security';
 
-let scriptTreeProvider: ScriptTreeProvider;
+let scriptWebviewProvider: ScriptWebviewProvider;
 let scriptScanner: ScriptScanner;
 let executor: Executor;
 let configManager: ConfigManager;
@@ -23,10 +23,11 @@ export async function activate(context: vscode.ExtensionContext) {
         // Register ALL commands FIRST, before creating tree view
         // This ensures commands exist when the tree view tries to use them
 
-        const refreshCommand = vscode.commands.registerCommand('runmate.refreshScripts', () => {
+        const refreshCommand = vscode.commands.registerCommand('runmate.refreshScripts', async () => {
             console.log('RunMate: Manual refresh triggered');
-            if (scriptTreeProvider) {
-                scriptTreeProvider.refresh();
+            await scriptScanner.scanScripts();
+            if (scriptWebviewProvider) {
+                scriptWebviewProvider.refresh();
             }
         });
         context.subscriptions.push(refreshCommand);
@@ -39,48 +40,67 @@ export async function activate(context: vscode.ExtensionContext) {
             }
 
             const config = vscode.workspace.getConfiguration('runmate');
+            const scriptName = scriptItem.label;
+            const scriptPath = scriptItem.filePath;
             let parameters = '';
 
-            if (config.get<boolean>('rememberLastParameters')) {
+            // Check if script has parameters
+            const hasParams = executor.hasParameters(scriptItem.filePath);
+            console.log(`RunMate: Script ${scriptItem.label} hasParams: ${hasParams}`);
+
+            // Get last parameters if remember is enabled and script has parameters
+            if (hasParams && config.get<boolean>('rememberLastParameters')) {
                 const lastParams = context.workspaceState.get<string>(`params_${scriptItem.filePath}`);
                 if (lastParams) {
                     parameters = lastParams;
                 }
             }
 
-            const input = await vscode.window.showInputBox({
-                prompt: `Enter parameters for ${scriptItem.label}`,
-                placeHolder: 'Optional: Enter script parameters',
-                value: parameters
-            });
+            // Show unified dialog for confirmation and parameter input
+            const confirmExecution = config.get<boolean>('confirmBeforeExecute', true);
+            if (confirmExecution || hasParams) {
+                // Create the dialog based on whether script has parameters
+                let dialogResult: string | undefined;
 
-            if (input !== undefined) {
-                if (config.get<boolean>('rememberLastParameters') && input) {
-                    await context.workspaceState.update(`params_${scriptItem.filePath}`, input);
-                }
+                if (hasParams) {
+                    // Show input box with confirmation options
+                    dialogResult = await vscode.window.showInputBox({
+                        prompt: `Execute script: ${scriptName}`,
+                        placeHolder: 'Enter parameters (optional) and press Enter to execute, or Esc to cancel',
+                        value: parameters,
+                        validateInput: (_value) => {
+                            // Allow any input including empty string
+                            return null;
+                        },
+                        ignoreFocusOut: true
+                    });
 
-                const confirmExecution = config.get<boolean>('confirmBeforeExecute', true);
-                if (confirmExecution) {
-                    const scriptName = scriptItem.label;
-                    const scriptPath = scriptItem.filePath;
-                    const paramText = input ? ` with parameters: ${input}` : '';
+                    if (dialogResult === undefined) {
+                        // User cancelled
+                        return;
+                    }
 
+                    parameters = dialogResult;
+
+                    // Save parameters if remember is enabled
+                    if (config.get<boolean>('rememberLastParameters') && parameters) {
+                        await context.workspaceState.update(`params_${scriptItem.filePath}`, parameters);
+                    }
+                } else {
+                    // No parameters needed, just show confirmation
                     const confirmation = await vscode.window.showQuickPick(
                         [
                             {
                                 label: '$(play) Execute',
-                                description: 'Run the script now',
-                                detail: `${scriptPath}${paramText}`
+                                description: scriptPath
                             },
                             {
                                 label: '$(x) Cancel',
-                                description: 'Do not execute the script',
-                                detail: 'Script execution will be cancelled'
+                                description: 'Cancel execution'
                             }
                         ],
                         {
                             placeHolder: `Execute script: ${scriptName}?`,
-                            title: 'Script Execution Confirmation',
                             ignoreFocusOut: true
                         }
                     );
@@ -89,10 +109,16 @@ export async function activate(context: vscode.ExtensionContext) {
                         return;
                     }
                 }
-
-                await executor.executeScript(scriptItem.filePath, input || '');
-                // Refresh will be triggered by executor's onStatusChanged event
+            } else {
+                // No confirmation needed and no parameters, execute directly
+                if (hasParams) {
+                    // Should not happen, but handle it anyway
+                    parameters = '';
+                }
             }
+
+            await executor.executeScript(scriptItem.filePath, parameters || '');
+            // Refresh will be triggered by executor's onStatusChanged event
         });
         context.subscriptions.push(runScriptCommand);
         console.log('RunMate: Run script command registered');
@@ -118,6 +144,7 @@ export async function activate(context: vscode.ExtensionContext) {
         });
         context.subscriptions.push(openScriptCommand);
         console.log('RunMate: Open script command registered');
+
 
         const openConfigCommand = vscode.commands.registerCommand('runmate.openConfig', async () => {
             const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
@@ -153,51 +180,48 @@ export async function activate(context: vscode.ExtensionContext) {
 
         console.log('RunMate: All commands registered successfully');
 
-        // NOW create tree provider and tree view AFTER commands are registered
-        scriptTreeProvider = new ScriptTreeProvider(scriptScanner, executor);
+        // Create and register the WebviewViewProvider
+        scriptWebviewProvider = new ScriptWebviewProvider(
+            context.extensionUri,
+            scriptScanner,
+            executor,
+            context
+        );
 
-        // Register the tree view
-        const treeView = vscode.window.createTreeView('runmate.scriptView', {
-            treeDataProvider: scriptTreeProvider,
-            showCollapseAll: true,
-            canSelectMany: false
-        });
-        context.subscriptions.push(treeView);
-        console.log('RunMate: Tree view created successfully');
+        context.subscriptions.push(
+            vscode.window.registerWebviewViewProvider(
+                ScriptWebviewProvider.viewType,
+                scriptWebviewProvider,
+                {
+                    webviewOptions: {
+                        retainContextWhenHidden: true
+                    }
+                }
+            )
+        );
+        console.log('RunMate: Webview provider registered successfully');
 
         // Perform initial scan
         await scriptScanner.scanScripts();
         console.log('RunMate: Initial scan completed');
 
-        // Listen for script status changes to refresh the tree
-        executor.onStatusChanged((scriptPath) => {
-            console.log(`RunMate: Status changed for script: ${scriptPath}, refreshing tree`);
-            scriptTreeProvider.refresh();
-        });
-
         // Setup auto-refresh if enabled
         const config = vscode.workspace.getConfiguration('runmate');
         if (config.get<boolean>('autoRefresh')) {
             scriptScanner.startWatching(() => {
-                scriptTreeProvider.refresh();
+                if (scriptWebviewProvider) {
+                    scriptWebviewProvider.refresh();
+                }
             });
         }
-
-        // Handle tree view selection
-        treeView.onDidChangeSelection(e => {
-            if (e.selection.length > 0) {
-                const item = e.selection[0];
-                if (item.contextValue === 'script' || item.contextValue === 'running') {
-                    vscode.commands.executeCommand('runmate.openScript', item);
-                }
-            }
-        });
 
         context.subscriptions.push(scriptScanner);
 
         // Trigger initial refresh after everything is set up
         setTimeout(() => {
-            scriptTreeProvider.refresh();
+            if (scriptWebviewProvider) {
+                scriptWebviewProvider.refresh();
+            }
         }, 500);
 
         console.log('RunMate: Extension activation completed successfully');
