@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import { ChildProcess } from 'child_process';
 import { SecurityChecker } from './security';
 import { ConfigManager } from './config';
+import { TerminalManager } from './terminalManager';
 
 export enum ExecutionStatus {
     Idle = 'idle',
@@ -27,18 +28,21 @@ export class Executor implements vscode.Disposable {
     private statusBarItem: vscode.StatusBarItem;
     private onScriptStatusChanged: vscode.EventEmitter<string> = new vscode.EventEmitter<string>();
     public readonly onStatusChanged = this.onScriptStatusChanged.event;
+    private terminalManager: TerminalManager;
 
     constructor(
         context: vscode.ExtensionContext,
         private securityChecker: SecurityChecker,
         private configManager: ConfigManager
     ) {
+        this.terminalManager = new TerminalManager(context);
         this.statusBarItem = vscode.window.createStatusBarItem(
             vscode.StatusBarAlignment.Left,
             100
         );
         context.subscriptions.push(this.statusBarItem);
         context.subscriptions.push(this.onScriptStatusChanged);
+        context.subscriptions.push(this.terminalManager);
 
         // Listen for terminal close events (when user manually closes)
         vscode.window.onDidCloseTerminal((terminal) => {
@@ -97,9 +101,19 @@ export class Executor implements vscode.Disposable {
     }
 
     public async executeScript(scriptPath: string, parameters: string): Promise<void> {
+        // Get configuration first
+        const config = vscode.workspace.getConfiguration('runmate');
+        const reuseMode = config.get<'always' | 'never' | 'smart'>('terminalReuseMode', 'smart');
+
+        // Check if script is already running
         if (this.runningScripts.has(scriptPath)) {
-            vscode.window.showWarningMessage(`Script ${path.basename(scriptPath)} is already running`);
-            return;
+            const runningScript = this.runningScripts.get(scriptPath);
+            if (runningScript && runningScript.status === ExecutionStatus.Running) {
+                // Only prevent execution if script is actually still running
+                vscode.window.showWarningMessage(`Script ${path.basename(scriptPath)} is already running`);
+                return;
+            }
+            // If not running, we'll handle it based on reuse mode below
         }
 
         try {
@@ -121,23 +135,39 @@ export class Executor implements vscode.Disposable {
                 }
             }
 
-            const scriptName = path.basename(scriptPath);
-            const terminalName = `[${scriptName}]`;
-
             const workingDir = this.getWorkingDirectory(scriptPath);
 
             // Get configuration
-            const config = vscode.workspace.getConfiguration('runmate');
             const keepOpen = config.get<boolean>('keepTerminalOpen', true);
 
-            // Create terminal - VS Code will keep it open by default
-            const terminal = vscode.window.createTerminal({
-                name: terminalName,
-                cwd: workingDir,
-                env: process.env
-            });
+            // Get or create terminal through terminal manager
+            const terminal = this.terminalManager.getOrCreateTerminal(
+                scriptPath,
+                workingDir,
+                reuseMode
+            );
 
             terminal.show();
+
+            // Add separator when reusing terminal for any script
+            if (reuseMode !== 'never') {
+                // Check if this terminal was used before (for any script)
+                let isReused = false;
+                for (const script of this.runningScripts.values()) {
+                    if (script.terminal === terminal) {
+                        isReused = true;
+                        break;
+                    }
+                }
+
+                if (isReused) {
+                    // Terminal is being reused, add clear separator
+                    terminal.sendText('echo ""');
+                    terminal.sendText('echo "========================================"');
+                    terminal.sendText(`echo "[$(date +"%H:%M:%S")] Starting: ${path.basename(scriptPath)}"`);
+                    terminal.sendText('echo "========================================"');
+                }
+            }
 
             // Execute script in terminal
             const command = parameters ? `"${scriptPath}" ${parameters}` : `"${scriptPath}"`;
@@ -167,7 +197,7 @@ export class Executor implements vscode.Disposable {
 
             this.updateStatusBar();
 
-            vscode.window.showInformationMessage(`Executing: ${scriptName}`);
+            vscode.window.showInformationMessage(`Executing: ${path.basename(scriptPath)}`);
 
         } catch (error) {
             vscode.window.showErrorMessage(`Failed to execute script: ${error}`);
@@ -261,11 +291,28 @@ export class Executor implements vscode.Disposable {
             // Clean up monitoring interval
             if (runningScript.intervalId) {
                 clearInterval(runningScript.intervalId);
+                runningScript.intervalId = undefined;
             }
 
-            // Immediately remove from running scripts to update status bar
-            this.runningScripts.delete(scriptPath);
-            this.terminals.delete(scriptPath);
+            // Mark terminal as completed in terminal manager
+            const success = status === ExecutionStatus.Success;
+            this.terminalManager.markCompleted(scriptPath, success);
+
+            // Update the script status but keep it in the map for potential reuse
+            runningScript.status = status;
+
+            // Get reuse mode to decide whether to keep the script in tracking
+            const config = vscode.workspace.getConfiguration('runmate');
+            const reuseMode = config.get<'always' | 'never' | 'smart'>('terminalReuseMode', 'smart');
+
+            if (reuseMode === 'never') {
+                // Only remove from tracking if we're not reusing terminals
+                this.runningScripts.delete(scriptPath);
+                this.terminals.delete(scriptPath);
+            } else {
+                // Keep in tracking but update status for reuse
+                console.log(`RunMate: Keeping terminal for ${scriptPath} for potential reuse (${reuseMode} mode)`);
+            }
 
             // Update status bar to show script is no longer running
             this.updateStatusBar();
@@ -273,7 +320,7 @@ export class Executor implements vscode.Disposable {
             // Fire event to refresh UI
             this.onScriptStatusChanged.fire(scriptPath);
 
-            console.log(`RunMate: Script ${scriptPath} removed from running list, status bar updated`);
+            console.log(`RunMate: Script ${scriptPath} marked as completed, status bar updated`);
         }
     }
 
@@ -352,7 +399,14 @@ export class Executor implements vscode.Disposable {
     }
 
     private updateStatusBar(): void {
-        const runningCount = this.runningScripts.size;
+        // Only count scripts that are actually running
+        let runningCount = 0;
+        for (const script of this.runningScripts.values()) {
+            if (script.status === ExecutionStatus.Running) {
+                runningCount++;
+            }
+        }
+
         console.log(`RunMate: Updating status bar, running scripts count: ${runningCount}`);
 
         if (runningCount > 0) {
@@ -379,6 +433,7 @@ export class Executor implements vscode.Disposable {
         this.runningScripts.clear();
         this.statusBarItem.dispose();
         this.onScriptStatusChanged.dispose();
+        this.terminalManager.dispose();
     }
 
     public getRunningScripts(): string[] {
@@ -387,6 +442,10 @@ export class Executor implements vscode.Disposable {
 
     public isScriptRunning(scriptPath: string): boolean {
         return this.runningScripts.has(scriptPath);
+    }
+
+    public getTerminalManager(): TerminalManager {
+        return this.terminalManager;
     }
 
 }

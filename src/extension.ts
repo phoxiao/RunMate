@@ -1,12 +1,14 @@
 import * as vscode from 'vscode';
-import { ScriptWebviewProvider } from './scriptWebviewProvider';
+import { CombinedWebviewProvider } from './combinedWebviewProvider';
 import { ScriptScanner } from './scriptScanner';
+import { LogScanner } from './logScanner';
 import { Executor } from './executor';
 import { ConfigManager } from './config';
 import { SecurityChecker } from './security';
 
-let scriptWebviewProvider: ScriptWebviewProvider;
+let combinedWebviewProvider: CombinedWebviewProvider;
 let scriptScanner: ScriptScanner;
+let logScanner: LogScanner;
 let executor: Executor;
 let configManager: ConfigManager;
 
@@ -19,6 +21,7 @@ export async function activate(context: vscode.ExtensionContext) {
         const securityChecker = new SecurityChecker(configManager);
         executor = new Executor(context, securityChecker, configManager);
         scriptScanner = new ScriptScanner(configManager);
+        logScanner = new LogScanner(configManager);
 
         // Register ALL commands FIRST, before creating tree view
         // This ensures commands exist when the tree view tries to use them
@@ -26,8 +29,8 @@ export async function activate(context: vscode.ExtensionContext) {
         const refreshCommand = vscode.commands.registerCommand('runmate.refreshScripts', async () => {
             console.log('RunMate: Manual refresh triggered');
             await scriptScanner.scanScripts();
-            if (scriptWebviewProvider) {
-                scriptWebviewProvider.refresh();
+            if (combinedWebviewProvider) {
+                combinedWebviewProvider.refresh();
             }
         });
         context.subscriptions.push(refreshCommand);
@@ -177,8 +180,8 @@ export async function activate(context: vscode.ExtensionContext) {
 
                 // Refresh the script list
                 await scriptScanner.scanScripts();
-                if (scriptWebviewProvider) {
-                    scriptWebviewProvider.refresh();
+                if (combinedWebviewProvider) {
+                    combinedWebviewProvider.refresh();
                 }
 
                 console.log(`RunMate: Deleted script: ${scriptPath}`);
@@ -222,20 +225,125 @@ export async function activate(context: vscode.ExtensionContext) {
         context.subscriptions.push(openConfigCommand);
         console.log('RunMate: Open config command registered');
 
+        // Register terminal management commands
+        const closeAllTerminalsCommand = vscode.commands.registerCommand('runmate.closeAllTerminals', () => {
+            if (executor) {
+                executor.getTerminalManager().closeAllTerminals();
+                if (combinedWebviewProvider) {
+                    combinedWebviewProvider.refresh();
+                }
+            }
+        });
+        context.subscriptions.push(closeAllTerminalsCommand);
+        console.log('RunMate: Close all terminals command registered');
+
+        const closeCompletedTerminalsCommand = vscode.commands.registerCommand('runmate.closeCompletedTerminals', () => {
+            if (executor) {
+                executor.getTerminalManager().closeCompletedTerminals();
+                if (combinedWebviewProvider) {
+                    combinedWebviewProvider.refresh();
+                }
+            }
+        });
+        context.subscriptions.push(closeCompletedTerminalsCommand);
+        console.log('RunMate: Close completed terminals command registered');
+
+        const showTerminalManagerCommand = vscode.commands.registerCommand('runmate.showTerminalManager', async () => {
+            if (executor) {
+                const terminalManager = executor.getTerminalManager();
+                const terminals = terminalManager.getAllTerminals();
+                const counts = terminalManager.getTerminalCounts();
+
+                if (terminals.length === 0) {
+                    vscode.window.showInformationMessage('No RunMate terminals are currently open');
+                    return;
+                }
+
+                // Create quick pick items for each terminal
+                const items = terminals.map(t => {
+                    const statusIcon = t.status === 'running' ? '▶' :
+                                       t.status === 'completed' ? '✓' : '✗';
+                    const duration = t.endTime
+                        ? `(${Math.round((t.endTime - t.startTime) / 1000)}s)`
+                        : '(running)';
+
+                    return {
+                        label: `${statusIcon} ${t.scriptName}`,
+                        description: duration,
+                        detail: `Status: ${t.status}`,
+                        terminal: t
+                    };
+                });
+
+                // Add management options at the top
+                const managementOptions = [
+                    {
+                        label: '$(close-all) Close All Terminals',
+                        description: `${counts.total} terminal${counts.total > 1 ? 's' : ''}`,
+                        action: 'closeAll'
+                    },
+                    {
+                        label: '$(check) Close Completed Terminals',
+                        description: `${counts.completed + counts.failed} terminal${(counts.completed + counts.failed) > 1 ? 's' : ''}`,
+                        action: 'closeCompleted'
+                    }
+                ];
+
+                const selection = await vscode.window.showQuickPick(
+                    [...managementOptions, ...items],
+                    {
+                        placeHolder: `RunMate Terminals: ${counts.running} running, ${counts.completed} completed, ${counts.failed} failed`,
+                        canPickMany: false
+                    }
+                );
+
+                if (selection) {
+                    if ('action' in selection) {
+                        if (selection.action === 'closeAll') {
+                            terminalManager.closeAllTerminals();
+                        } else if (selection.action === 'closeCompleted') {
+                            terminalManager.closeCompletedTerminals();
+                        }
+                    } else if ('terminal' in selection) {
+                        // Focus the selected terminal
+                        selection.terminal.terminal.show();
+                    }
+                }
+
+                if (combinedWebviewProvider) {
+                    combinedWebviewProvider.refresh();
+                }
+            }
+        });
+        context.subscriptions.push(showTerminalManagerCommand);
+        console.log('RunMate: Show terminal manager command registered');
+
+        // Register log commands
+        const refreshLogsCommand = vscode.commands.registerCommand('runmate.refreshLogs', async () => {
+            console.log('RunMate: Manual log refresh triggered');
+            await logScanner.scanLogs();
+            if (combinedWebviewProvider) {
+                combinedWebviewProvider.refresh();
+            }
+        });
+        context.subscriptions.push(refreshLogsCommand);
+        console.log('RunMate: Refresh logs command registered');
+
         console.log('RunMate: All commands registered successfully');
 
-        // Create and register the WebviewViewProvider
-        scriptWebviewProvider = new ScriptWebviewProvider(
+        // Create and register the Combined WebviewViewProvider
+        combinedWebviewProvider = new CombinedWebviewProvider(
             context.extensionUri,
             scriptScanner,
+            logScanner,
             executor,
             context
         );
 
         context.subscriptions.push(
             vscode.window.registerWebviewViewProvider(
-                ScriptWebviewProvider.viewType,
-                scriptWebviewProvider,
+                CombinedWebviewProvider.viewType,
+                combinedWebviewProvider,
                 {
                     webviewOptions: {
                         retainContextWhenHidden: true
@@ -245,26 +353,37 @@ export async function activate(context: vscode.ExtensionContext) {
         );
         console.log('RunMate: Webview provider registered successfully');
 
-        // Perform initial scan
+        // Perform initial scans
         await scriptScanner.scanScripts();
-        console.log('RunMate: Initial scan completed');
+        await logScanner.scanLogs();
+        console.log('RunMate: Initial scans completed');
 
         // Setup auto-refresh if enabled
         const config = vscode.workspace.getConfiguration('runmate');
         if (config.get<boolean>('autoRefresh')) {
             scriptScanner.startWatching(() => {
-                if (scriptWebviewProvider) {
-                    scriptWebviewProvider.refresh();
+                if (combinedWebviewProvider) {
+                    combinedWebviewProvider.refresh();
                 }
             });
         }
 
         context.subscriptions.push(scriptScanner);
+        context.subscriptions.push(logScanner);
+
+        // Setup log file watching if auto-refresh enabled
+        if (config.get<boolean>('autoRefresh')) {
+            logScanner.startWatching(() => {
+                if (combinedWebviewProvider) {
+                    combinedWebviewProvider.refresh();
+                }
+            });
+        }
 
         // Trigger initial refresh after everything is set up
         setTimeout(() => {
-            if (scriptWebviewProvider) {
-                scriptWebviewProvider.refresh();
+            if (combinedWebviewProvider) {
+                combinedWebviewProvider.refresh();
             }
         }, 500);
 
@@ -279,6 +398,9 @@ export async function activate(context: vscode.ExtensionContext) {
 export function deactivate() {
     if (scriptScanner) {
         scriptScanner.dispose();
+    }
+    if (logScanner) {
+        logScanner.dispose();
     }
     if (executor) {
         executor.dispose();

@@ -12,7 +12,8 @@
     "vscode": "^1.74.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "Testing"
   ],
   "keywords": [
     "shell",
@@ -75,6 +76,31 @@
       {
         "command": "runmate.deleteScript",
         "title": "Delete Script",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "runmate.closeAllTerminals",
+        "title": "Close All Terminals",
+        "icon": "$(close-all)"
+      },
+      {
+        "command": "runmate.closeCompletedTerminals",
+        "title": "Close Completed Terminals",
+        "icon": "$(check)"
+      },
+      {
+        "command": "runmate.showTerminalManager",
+        "title": "Show Terminal Manager",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "runmate.refreshLogs",
+        "title": "Refresh Logs",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "runmate.deleteLog",
+        "title": "Delete Log",
         "icon": "$(trash)"
       }
     ],
@@ -195,6 +221,53 @@
           "type": "boolean",
           "default": true,
           "description": "Keep terminal open after script execution completes"
+        },
+        "runmate.terminalReuseMode": {
+          "type": "string",
+          "default": "smart",
+          "enum": ["always", "never", "smart"],
+          "enumDescriptions": [
+            "Always reuse the same terminal for a script",
+            "Always create new terminals (current behavior)",
+            "Reuse if previous execution completed, create new if still running"
+          ],
+          "description": "Terminal reuse strategy for script execution"
+        },
+        "runmate.maxTerminalHistory": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "maximum": 50,
+          "description": "Maximum number of terminals to keep open (prompts for cleanup when exceeded)"
+        },
+        "runmate.logFileTypes": {
+          "type": "array",
+          "default": ["*.log", "*.out", "*.err", "*.txt"],
+          "description": "File patterns for log files to scan",
+          "items": {
+            "type": "string"
+          }
+        },
+        "runmate.logIgnoreDirectories": {
+          "type": "array",
+          "default": [
+            "node_modules",
+            ".git",
+            "dist",
+            "out",
+            "build"
+          ],
+          "description": "Directories to ignore when scanning for log files",
+          "items": {
+            "type": "string"
+          }
+        },
+        "runmate.maxLogFileSize": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Maximum log file size in MB that can be opened"
         }
       }
     }
