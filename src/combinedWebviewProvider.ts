@@ -506,28 +506,28 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
 
                 /* Terminal Bar */
                 .terminal-bar {
-                    padding: 8px;
+                    padding: 6px 8px;
                     background-color: var(--vscode-sideBar-background);
                     border-bottom: 1px solid var(--vscode-panel-border);
                     display: none;
+                    align-items: center;
+                    justify-content: space-between;
                 }
 
                 .terminal-bar.visible {
-                    display: block;
+                    display: flex;
                 }
 
                 .terminal-info {
-                    display: flex;
-                    align-items: center;
-                    justify-content: space-between;
-                    margin-bottom: 8px;
                     font-size: 11px;
                     color: var(--vscode-descriptionForeground);
+                    flex: 1;
                 }
 
                 .terminal-actions {
                     display: flex;
-                    gap: 4px;
+                    gap: 2px;
+                    flex-shrink: 0;
                 }
 
                 .terminal-action-button {
@@ -546,9 +546,10 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
                 }
 
                 .terminal-action-button.icon-only {
-                    padding: 4px 6px;
-                    min-width: 26px;
-                    width: 26px;
+                    padding: 2px 4px;
+                    min-width: 22px;
+                    width: 22px;
+                    min-height: 22px;
                     justify-content: center;
                 }
 
@@ -855,9 +856,7 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
     private getTerminalBar(): string {
         return `
             <div class="terminal-bar" id="terminalBar">
-                <div class="terminal-info">
-                    <span id="terminalCount">No terminals open</span>
-                </div>
+                <span class="terminal-info" id="terminalCount">No terminals open</span>
                 <div class="terminal-actions">
                     <button class="terminal-action-button icon-only" onclick="closeCompletedTerminals()" title="Close completed terminals">
                         <span class="codicon codicon-check"></span>
