@@ -545,6 +545,13 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
                     min-height: 26px;
                 }
 
+                .terminal-action-button.icon-only {
+                    padding: 4px 6px;
+                    min-width: 26px;
+                    width: 26px;
+                    justify-content: center;
+                }
+
                 .terminal-action-button:hover {
                     background: var(--vscode-button-secondaryHoverBackground);
                 }
@@ -556,7 +563,10 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
 
                 .terminal-action-button .codicon {
                     font-size: 14px;
-                    margin-right: 2px;
+                }
+
+                .terminal-action-button.icon-only .codicon {
+                    margin: 0;
                 }
 
                 /* Content Area */
@@ -849,17 +859,14 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
                     <span id="terminalCount">No terminals open</span>
                 </div>
                 <div class="terminal-actions">
-                    <button class="terminal-action-button" onclick="closeCompletedTerminals()" title="Close completed terminals">
+                    <button class="terminal-action-button icon-only" onclick="closeCompletedTerminals()" title="Close completed terminals">
                         <span class="codicon codicon-check"></span>
-                        <span>Close Completed</span>
                     </button>
-                    <button class="terminal-action-button" onclick="closeAllTerminals()" title="Close all terminals">
+                    <button class="terminal-action-button icon-only" onclick="closeAllTerminals()" title="Close all terminals">
                         <span class="codicon codicon-close-all"></span>
-                        <span>Close All</span>
                     </button>
-                    <button class="terminal-action-button" onclick="showTerminalManager()" title="Manage terminals">
+                    <button class="terminal-action-button icon-only" onclick="showTerminalManager()" title="Manage terminals">
                         <span class="codicon codicon-settings-gear"></span>
-                        <span>Manage</span>
                     </button>
                 </div>
             </div>`;
