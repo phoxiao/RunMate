@@ -149,25 +149,6 @@ export class Executor implements vscode.Disposable {
 
             terminal.show();
 
-            // Add separator when reusing terminal for any script
-            if (reuseMode !== 'never') {
-                // Check if this terminal was used before (for any script)
-                let isReused = false;
-                for (const script of this.runningScripts.values()) {
-                    if (script.terminal === terminal) {
-                        isReused = true;
-                        break;
-                    }
-                }
-
-                if (isReused) {
-                    // Terminal is being reused, add clear separator
-                    terminal.sendText('echo ""');
-                    terminal.sendText('echo "========================================"');
-                    terminal.sendText(`echo "[$(date +"%H:%M:%S")] Starting: ${path.basename(scriptPath)}"`);
-                    terminal.sendText('echo "========================================"');
-                }
-            }
 
             // Execute script in terminal
             const command = parameters ? `"${scriptPath}" ${parameters}` : `"${scriptPath}"`;

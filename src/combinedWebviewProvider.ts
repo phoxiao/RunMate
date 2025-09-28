@@ -42,7 +42,10 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
 
         webviewView.webview.options = {
             enableScripts: true,
-            localResourceRoots: [this._extensionUri]
+            localResourceRoots: [
+                this._extensionUri,
+                vscode.Uri.file(this.context.extensionPath)
+            ]
         };
 
         webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
@@ -251,12 +254,20 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
 
                 seenPaths.add(script.path);
                 const status = this.executor.getScriptStatus(script.path);
+
+                // Get file decoration/icon class based on file extension
+                const fileExt = path.extname(script.name).toLowerCase();
+                const isShellScript = ['.sh', '.bash', '.zsh', '.fish', '.ksh'].includes(fileExt) ||
+                                     script.name.endsWith('.command');
+
                 scriptList.push({
                     name: script.name,
                     path: script.path,
                     directory: dir === 'root' ? '/' : dir,
                     status: status,
-                    isRunning: status === ExecutionStatus.Running
+                    isRunning: status === ExecutionStatus.Running,
+                    fileType: isShellScript ? 'shell' : 'script',
+                    fileExt: fileExt
                 });
             }
         }
@@ -279,19 +290,32 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
 
         const allLogs = this.logScanner.getLogs();
         const logList: any[] = [];
+        const seenPaths = new Set<string>();
 
         // Filter and organize logs
         for (const [dir, logs] of allLogs.entries()) {
             for (const log of logs) {
+                if (seenPaths.has(log.path)) {
+                    continue;
+                }
+
                 if (this.logSearchQuery && !this.matchesSearch(log.name, this.logSearchQuery)) {
                     continue;
                 }
+
+                seenPaths.add(log.path);
+
+                // Get file decoration/icon class based on file extension
+                const fileExt = path.extname(log.name).toLowerCase();
+                const isLogFile = ['.log', '.out', '.err'].includes(fileExt);
 
                 logList.push({
                     name: log.name,
                     path: log.path,
                     directory: dir === 'root' ? '/' : dir,
-                    size: this.logScanner.formatFileSize(log.size)
+                    size: this.logScanner.formatFileSize(log.size),
+                    fileType: isLogFile ? 'log' : 'text',
+                    fileExt: fileExt
                 });
             }
         }
@@ -319,11 +343,13 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
         return searchIndex === lowerQuery.length;
     }
 
-    private _getHtmlForWebview(_webview: vscode.Webview) {
-        return this.getWebviewHTML();
+    private _getHtmlForWebview(webview: vscode.Webview) {
+        // Get the current file icon theme
+        const fileIconTheme = vscode.workspace.getConfiguration().get('workbench.iconTheme', 'vs-seti');
+        return this.getWebviewHTML(webview, fileIconTheme);
     }
 
-    private getWebviewHTML(): string {
+    private getWebviewHTML(_webview: vscode.Webview, _iconTheme: string): string {
         // Return combined HTML with tabs for scripts and logs
         // This is a simplified version - you would expand this with full HTML
         return `<!DOCTYPE html>
@@ -345,6 +371,7 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
         return `
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <link href="https://microsoft.github.io/vscode-codicons/dist/codicon.css" rel="stylesheet" />
             <style>
                 * {
                     margin: 0;
@@ -354,12 +381,13 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
 
                 body {
                     font-family: var(--vscode-font-family);
-                    font-size: var(--vscode-font-size);
+                    font-size: 13px;
                     color: var(--vscode-foreground);
                     background-color: var(--vscode-sideBar-background);
                     display: flex;
                     flex-direction: column;
                     height: 100vh;
+                    overflow: hidden;
                 }
 
                 /* Tab Bar */
@@ -368,31 +396,47 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
                     background-color: var(--vscode-sideBar-background);
                     border-bottom: 1px solid var(--vscode-panel-border);
                     padding: 0;
+                    height: 35px;
                 }
 
                 .tab {
                     flex: 1;
-                    padding: 8px 12px;
+                    padding: 8px 16px;
                     text-align: center;
                     cursor: pointer;
-                    border-bottom: 2px solid transparent;
-                    transition: all 0.2s;
-                    background: transparent;
                     border: none;
-                    color: var(--vscode-foreground);
-                    opacity: 0.7;
-                    font-size: var(--vscode-font-size);
+                    background: transparent;
+                    color: var(--vscode-tab-inactiveForeground, var(--vscode-foreground));
+                    font-size: 13px;
+                    font-family: var(--vscode-font-family);
+                    border-bottom: 2px solid transparent;
+                    transition: all 0.2s ease;
+                    min-height: 35px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
                 }
 
                 .tab:hover {
-                    opacity: 1;
-                    background-color: var(--vscode-list-hoverBackground);
+                    color: var(--vscode-tab-activeForeground, var(--vscode-foreground));
+                    background-color: var(--vscode-tab-hoverBackground, var(--vscode-list-hoverBackground));
                 }
 
                 .tab.active {
-                    opacity: 1;
-                    border-bottom-color: var(--vscode-activityBar-activeBorder);
-                    background-color: var(--vscode-list-activeSelectionBackground);
+                    color: var(--vscode-tab-activeForeground, var(--vscode-foreground));
+                    border-bottom-color: var(--vscode-tab-activeBorder, var(--vscode-focusBorder));
+                    background-color: var(--vscode-tab-activeBackground, transparent);
+                }
+
+                .tab:focus {
+                    outline: 1px solid var(--vscode-focusBorder);
+                    outline-offset: -1px;
+                }
+
+                .tab .codicon {
+                    font-size: 14px;
+                    margin-right: 4px;
+                    vertical-align: middle;
                 }
 
                 /* Search Container */
@@ -407,20 +451,15 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
                     align-items: center;
                     background-color: var(--vscode-input-background);
                     border: 1px solid var(--vscode-input-border);
-                    border-radius: 4px;
+                    border-radius: 2px;
                     padding: 0 8px;
-                    height: 32px;
+                    height: 26px;
                 }
 
                 .search-box:focus-within {
                     border-color: var(--vscode-focusBorder);
-                }
-
-                .search-icon {
-                    color: var(--vscode-foreground);
-                    opacity: 0.5;
-                    margin-right: 6px;
-                    font-size: 14px;
+                    outline: 1px solid var(--vscode-focusBorder);
+                    outline-offset: -1px;
                 }
 
                 .search-input {
@@ -430,7 +469,8 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
                     color: var(--vscode-input-foreground);
                     outline: none;
                     font-family: var(--vscode-font-family);
-                    font-size: var(--vscode-font-size);
+                    font-size: 13px;
+                    line-height: 16px;
                 }
 
                 .search-input::placeholder {
@@ -440,20 +480,28 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
                 .clear-button {
                     background: transparent;
                     border: none;
-                    color: var(--vscode-foreground);
-                    opacity: 0.5;
+                    color: var(--vscode-icon-foreground);
                     cursor: pointer;
-                    padding: 0 4px;
-                    font-size: 18px;
+                    padding: 2px;
+                    font-size: 16px;
+                    width: 16px;
+                    height: 16px;
                     display: none;
+                    align-items: center;
+                    justify-content: center;
+                    border-radius: 2px;
                 }
 
                 .clear-button:hover {
-                    opacity: 1;
+                    background-color: var(--vscode-toolbar-hoverBackground);
                 }
 
                 .clear-button.visible {
-                    display: block;
+                    display: flex;
+                }
+
+                .clear-button .codicon {
+                    font-size: 14px;
                 }
 
                 /* Terminal Bar */
@@ -473,7 +521,7 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
                     align-items: center;
                     justify-content: space-between;
                     margin-bottom: 8px;
-                    font-size: 12px;
+                    font-size: 11px;
                     color: var(--vscode-descriptionForeground);
                 }
 
@@ -485,25 +533,37 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
                 .terminal-action-button {
                     background: var(--vscode-button-secondaryBackground);
                     color: var(--vscode-button-secondaryForeground);
-                    border: 1px solid var(--vscode-button-border);
+                    border: 1px solid var(--vscode-button-border, transparent);
                     padding: 4px 8px;
                     font-size: 11px;
+                    font-family: var(--vscode-font-family);
                     border-radius: 2px;
                     cursor: pointer;
                     display: flex;
                     align-items: center;
                     gap: 4px;
+                    min-height: 26px;
                 }
 
                 .terminal-action-button:hover {
                     background: var(--vscode-button-secondaryHoverBackground);
                 }
 
+                .terminal-action-button:focus {
+                    outline: 1px solid var(--vscode-focusBorder);
+                    outline-offset: -1px;
+                }
+
+                .terminal-action-button .codicon {
+                    font-size: 14px;
+                    margin-right: 2px;
+                }
+
                 /* Content Area */
                 .content-area {
                     flex: 1;
                     overflow-y: auto;
-                    padding: 4px 0;
+                    overflow-x: hidden;
                 }
 
                 .content-view {
@@ -516,45 +576,71 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
 
                 /* Directory Groups */
                 .directory-group {
-                    margin-bottom: 4px;
+                    margin-bottom: 0;
                 }
 
                 .directory-header {
                     display: flex;
                     align-items: center;
-                    padding: 6px 8px;
+                    padding: 4px 8px;
                     cursor: pointer;
                     user-select: none;
-                    min-height: 24px;
+                    min-height: 22px;
+                    font-size: 13px;
+                    color: var(--vscode-foreground);
                 }
 
                 .directory-header:hover {
                     background-color: var(--vscode-list-hoverBackground);
                 }
 
-                .directory-icon {
-                    margin-right: 6px;
-                    opacity: 0.8;
+                /* Codicon chevron icons */
+                .codicon-chevron-down::before {
+                    content: '\\eab4';
+                }
+
+                .codicon-chevron-right::before {
+                    content: '\\eab6';
+                }
+
+                .directory-arrow {
+                    margin-right: 2px;
+                    color: var(--vscode-icon-foreground);
+                    font-size: 11px;
+                    width: 16px;
+                    height: 16px;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+
+                .directory-header.collapsed .directory-arrow {
+                    /* Arrow is rotated via class change instead */
                 }
 
                 .directory-name {
                     flex: 1;
-                    font-weight: 500;
+                    font-weight: normal;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
                 }
 
                 .directory-count {
-                    opacity: 0.6;
-                    font-size: 12px;
+                    color: var(--vscode-descriptionForeground);
+                    font-size: 11px;
+                    margin-left: 8px;
                 }
 
                 /* Items */
                 .item {
                     display: flex;
                     align-items: center;
-                    padding: 3px 8px 3px 24px;
+                    padding: 2px 8px 2px 24px;
                     cursor: pointer;
                     position: relative;
-                    min-height: 24px;
+                    min-height: 22px;
+                    font-size: 13px;
                 }
 
                 .item:hover {
@@ -563,25 +649,56 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
 
                 .item-icon {
                     margin-right: 6px;
-                    opacity: 0.8;
+                    font-size: 16px;
+                    width: 16px;
+                    height: 16px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+
+                /* Match VS Code's file icon styles */
+                .file-icon {
+                    font-family: var(--vscode-editor-font-family), 'Courier New', monospace;
                     font-size: 14px;
+                    width: 16px;
+                    text-align: center;
+                }
+
+                .file-icon.shell-file {
+                    color: #89d185; /* Green for shell scripts */
+                    font-weight: bold;
+                }
+
+                /* Codicon list-flat icon for log files (horizontal lines) */
+                .codicon-list-flat::before {
+                    content: '\\eb84';
+                }
+
+                .log-item .codicon-list-flat {
+                    color: var(--vscode-icon-foreground);
+                    opacity: 0.9;
                 }
 
                 .item-name {
                     flex: 1;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    color: var(--vscode-foreground);
                 }
 
                 .item-info {
                     display: flex;
-                    gap: 12px;
-                    opacity: 0.6;
+                    gap: 8px;
+                    color: var(--vscode-descriptionForeground);
                     font-size: 11px;
                     margin-right: 8px;
                 }
 
                 .item-actions {
                     display: none;
-                    gap: 4px;
+                    gap: 2px;
                 }
 
                 .item:hover .item-actions {
@@ -591,34 +708,56 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
                 .action-button {
                     background: transparent;
                     border: none;
-                    color: var(--vscode-foreground);
-                    opacity: 0.6;
+                    color: var(--vscode-icon-foreground);
                     cursor: pointer;
-                    padding: 2px 4px;
-                    font-size: 14px;
+                    padding: 2px;
+                    font-size: 16px;
+                    width: 20px;
+                    height: 20px;
                     border-radius: 2px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+
+                .action-button .codicon {
+                    font-size: 16px;
                 }
 
                 .action-button:hover {
-                    opacity: 1;
                     background-color: var(--vscode-toolbar-hoverBackground);
+                }
+
+                .action-button:focus {
+                    outline: 1px solid var(--vscode-focusBorder);
+                    outline-offset: -1px;
                 }
 
                 /* Script specific styles */
                 .script-item.running .item-icon {
-                    animation: spin 1s linear infinite;
+                    color: var(--vscode-progressBar-background, #0e70c0) !important;
                 }
 
-                @keyframes spin {
+                .script-item.running .item-name {
+                    color: var(--vscode-foreground);
+                }
+
+                /* Codicon animations */
+                @keyframes codicon-spin {
                     from { transform: rotate(0deg); }
                     to { transform: rotate(360deg); }
                 }
 
+                .codicon-modifier-spin {
+                    animation: codicon-spin 1.5s linear infinite;
+                }
+
                 /* Empty state */
                 .empty-state {
-                    padding: 20px;
+                    padding: 24px 16px;
                     text-align: center;
-                    opacity: 0.6;
+                    color: var(--vscode-descriptionForeground);
+                    font-size: 13px;
                 }
 
                 .directory-content {
@@ -628,6 +767,51 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
                 .directory-content.collapsed {
                     display: none;
                 }
+
+                /* Badge styles for status indicators */
+                .status-badge {
+                    background-color: var(--vscode-badge-background);
+                    color: var(--vscode-badge-foreground);
+                    font-size: 11px;
+                    padding: 1px 6px;
+                    border-radius: 11px;
+                    margin-left: 4px;
+                    white-space: nowrap;
+                }
+
+                /* Focus states for accessibility */
+                .item:focus {
+                    outline: 1px solid var(--vscode-focusBorder);
+                    outline-offset: -1px;
+                    background-color: var(--vscode-list-focusBackground, var(--vscode-list-hoverBackground));
+                }
+
+                .directory-header:focus {
+                    outline: 1px solid var(--vscode-focusBorder);
+                    outline-offset: -1px;
+                }
+
+                /* Scrollbar styling to match VS Code */
+                ::-webkit-scrollbar {
+                    width: 10px;
+                }
+
+                ::-webkit-scrollbar-track {
+                    background: var(--vscode-scrollbarSlider-background);
+                }
+
+                ::-webkit-scrollbar-thumb {
+                    background: var(--vscode-scrollbarSlider-background);
+                    border-radius: 5px;
+                }
+
+                ::-webkit-scrollbar-thumb:hover {
+                    background: var(--vscode-scrollbarSlider-hoverBackground);
+                }
+
+                ::-webkit-scrollbar-thumb:active {
+                    background: var(--vscode-scrollbarSlider-activeBackground);
+                }
             </style>`;
     }
 
@@ -635,10 +819,10 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
         return `
             <div class="tab-bar">
                 <button class="tab active" id="scriptsTab" onclick="switchTab('scripts')">
-                    📜 Scripts
+                    <span class="shell-icon" style="margin-right: 4px;">$</span> Scripts
                 </button>
                 <button class="tab" id="logsTab" onclick="switchTab('logs')">
-                    📄 Logs
+                    <span class="codicon codicon-list-flat"></span> Logs
                 </button>
             </div>`;
     }
@@ -647,14 +831,13 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
         return `
             <div class="search-container">
                 <div class="search-box">
-                    <span class="search-icon">🔍</span>
                     <input
                         type="text"
                         class="search-input"
                         id="searchInput"
                         placeholder="Search..."
                     />
-                    <button class="clear-button" id="clearButton" title="Clear">×</button>
+                    <button class="clear-button" id="clearButton" title="Clear"><span class="codicon codicon-close"></span></button>
                 </div>
             </div>`;
     }
@@ -667,15 +850,15 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
                 </div>
                 <div class="terminal-actions">
                     <button class="terminal-action-button" onclick="closeCompletedTerminals()" title="Close completed terminals">
-                        <span>✓</span>
+                        <span class="codicon codicon-check"></span>
                         <span>Close Completed</span>
                     </button>
                     <button class="terminal-action-button" onclick="closeAllTerminals()" title="Close all terminals">
-                        <span>✕</span>
+                        <span class="codicon codicon-close-all"></span>
                         <span>Close All</span>
                     </button>
                     <button class="terminal-action-button" onclick="showTerminalManager()" title="Manage terminals">
-                        <span>⚙</span>
+                        <span class="codicon codicon-settings-gear"></span>
                         <span>Manage</span>
                     </button>
                 </div>
@@ -703,6 +886,31 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
                 let logs = [];
                 let groupedScripts = {};
                 let groupedLogs = {};
+
+                // Function to get appropriate file icon based on file type and theme
+                function getFileIcon(fileName, fileType) {
+                    const ext = fileName.split('.').pop().toLowerCase();
+
+                    // Map file extensions to appropriate icons/symbols
+                    const iconMap = {
+                        // Shell scripts
+                        'sh': '$',
+                        'bash': '$',
+                        'zsh': '$',
+                        'fish': '$',
+                        'ksh': '$',
+                        'command': '$',
+                        // Log files - use same icon as VS Code Explorer
+                        'log': '',  // Will use codicon class instead
+                        'out': '',  // Will use codicon class instead
+                        'err': '',  // Will use codicon class instead
+                        'txt': '',  // Will use codicon class instead
+                        // Default
+                        'default': ''
+                    };
+
+                    return iconMap[ext] || iconMap[fileType] || iconMap['default'];
+                }
 
                 const searchInput = document.getElementById('searchInput');
                 const clearButton = document.getElementById('clearButton');
@@ -817,9 +1025,9 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
                     const dirId = 'script_dir_' + dir.replace(/[^a-zA-Z0-9]/g, '_');
                     return \`
                         <div class="directory-group">
-                            <div class="directory-header" onclick="toggleDirectory('\${dirId}')">
-                                <span class="directory-icon">📁</span>
-                                <span class="directory-name">\${dir}/</span>
+                            <div class="directory-header" id="header_\${dirId}" onclick="toggleDirectory('\${dirId}')">
+                                <span class="directory-arrow codicon codicon-chevron-down"></span>
+                                <span class="directory-name">\${dir}</span>
                             </div>
                             <div class="directory-content" id="\${dirId}">
                                 \${dirScripts.map(script => renderScriptItem(script)).join('')}
@@ -830,21 +1038,35 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
 
                 function renderScriptItem(script) {
                     const statusClass = script.isRunning ? 'running' : '';
-                    const icon = script.isRunning ? '⟳' : '📜';
+
+                    // Determine icon based on file type and current theme
+                    let iconClass = '';
+                    let iconContent = '';
+
+                    if (script.isRunning) {
+                        iconClass = 'codicon codicon-loading codicon-modifier-spin';
+                    } else if (script.fileType === 'shell') {
+                        // Use appropriate icon for shell scripts
+                        iconClass = 'file-icon shell-file';
+                        iconContent = getFileIcon(script.name, 'shell');
+                    } else {
+                        iconClass = 'file-icon script-file';
+                        iconContent = getFileIcon(script.name, 'script');
+                    }
 
                     return \`
                         <div class="item script-item \${statusClass}"
                              ondblclick="openScript('\${script.path}')"
                              title="\${script.path}">
-                            <span class="item-icon">\${icon}</span>
+                            <span class="item-icon \${iconClass}">\${iconContent}</span>
                             <span class="item-name">\${script.name}</span>
                             <div class="item-actions">
                                 \${script.isRunning
-                                    ? \`<button class="action-button" onclick="stopScript('\${script.path}', event)" title="Stop">⬜</button>\`
-                                    : \`<button class="action-button" onclick="runScript('\${script.path}', event)" title="Run">▶</button>\`
+                                    ? \`<button class="action-button" onclick="stopScript('\${script.path}', event)" title="Stop"><span class="codicon codicon-debug-stop"></span></button>\`
+                                    : \`<button class="action-button" onclick="runScript('\${script.path}', event)" title="Run"><span class="codicon codicon-run"></span></button>\`
                                 }
-                                <button class="action-button" onclick="openScript('\${script.path}', event)" title="Open">📝</button>
-                                <button class="action-button" onclick="deleteScript('\${script.path}', event)" title="Delete">🗑️</button>
+                                <button class="action-button" onclick="openScript('\${script.path}', event)" title="Open"><span class="codicon codicon-go-to-file"></span></button>
+                                <button class="action-button" onclick="deleteScript('\${script.path}', event)" title="Delete"><span class="codicon codicon-trash"></span></button>
                             </div>
                         </div>
                     \`;
@@ -878,10 +1100,9 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
                     const dirId = 'log_dir_' + dir.replace(/[^a-zA-Z0-9]/g, '_');
                     return \`
                         <div class="directory-group">
-                            <div class="directory-header" onclick="toggleDirectory('\${dirId}')">
-                                <span class="directory-icon">📁</span>
-                                <span class="directory-name">\${dir}/</span>
-                                <span class="directory-count">(\${dirLogs.length} files)</span>
+                            <div class="directory-header" id="header_\${dirId}" onclick="toggleDirectory('\${dirId}')">
+                                <span class="directory-arrow codicon codicon-chevron-down"></span>
+                                <span class="directory-name">\${dir}</span>
                             </div>
                             <div class="directory-content" id="\${dirId}">
                                 \${dirLogs.map(log => renderLogItem(log)).join('')}
@@ -891,18 +1112,21 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
                 }
 
                 function renderLogItem(log) {
+                    // Use codicon-list-flat for log files (horizontal lines icon)
+                    const iconClass = 'codicon codicon-list-flat';
+
                     return \`
                         <div class="item log-item"
                              ondblclick="openLog('\${log.path}')"
                              title="\${log.path}">
-                            <span class="item-icon">📄</span>
+                            <span class="item-icon \${iconClass}"></span>
                             <span class="item-name">\${log.name}</span>
                             <div class="item-info">
                                 <span>\${log.size}</span>
                             </div>
                             <div class="item-actions">
-                                <button class="action-button" onclick="openLog('\${log.path}', event)" title="Open">📝</button>
-                                <button class="action-button" onclick="deleteLog('\${log.path}', event)" title="Delete">🗑️</button>
+                                <button class="action-button" onclick="openLog('\${log.path}', event)" title="Open"><span class="codicon codicon-go-to-file"></span></button>
+                                <button class="action-button" onclick="deleteLog('\${log.path}', event)" title="Delete"><span class="codicon codicon-trash"></span></button>
                             </div>
                         </div>
                     \`;
@@ -911,8 +1135,22 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
                 // Common functions
                 function toggleDirectory(dirId) {
                     const content = document.getElementById(dirId);
-                    if (content) {
+                    const header = document.getElementById('header_' + dirId);
+                    if (content && header) {
                         content.classList.toggle('collapsed');
+                        header.classList.toggle('collapsed');
+
+                        // Update arrow icon
+                        const arrow = header.querySelector('.directory-arrow');
+                        if (arrow) {
+                            if (content.classList.contains('collapsed')) {
+                                arrow.classList.remove('codicon-chevron-down');
+                                arrow.classList.add('codicon-chevron-right');
+                            } else {
+                                arrow.classList.remove('codicon-chevron-right');
+                                arrow.classList.add('codicon-chevron-down');
+                            }
+                        }
                     }
                 }
 
