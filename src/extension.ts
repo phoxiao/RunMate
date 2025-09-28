@@ -175,9 +175,6 @@ export async function activate(context: vscode.ExtensionContext) {
                 const fileUri = vscode.Uri.file(scriptPath);
                 await vscode.workspace.fs.delete(fileUri);
 
-                // Show success message
-                vscode.window.showInformationMessage(`Successfully deleted: ${scriptName}`);
-
                 // Refresh the script list
                 await scriptScanner.scanScripts();
                 if (combinedWebviewProvider) {

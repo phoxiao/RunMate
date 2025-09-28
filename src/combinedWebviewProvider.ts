@@ -200,7 +200,6 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
         try {
             const fileUri = vscode.Uri.file(scriptPath);
             await vscode.workspace.fs.delete(fileUri);
-            vscode.window.showInformationMessage(`Successfully deleted: ${scriptName}`);
             await this.scriptScanner.scanScripts();
             this.updateScriptList();
         } catch (error) {
@@ -224,7 +223,6 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
 
         try {
             await this.logScanner.deleteLog(logPath);
-            vscode.window.showInformationMessage(`Successfully deleted: ${logName}`);
             this.updateLogList();
         } catch (error) {
             vscode.window.showErrorMessage(`Failed to delete log: ${error}`);

@@ -197,8 +197,6 @@ export class Executor implements vscode.Disposable {
 
             this.updateStatusBar();
 
-            vscode.window.showInformationMessage(`Executing: ${path.basename(scriptPath)}`);
-
         } catch (error) {
             vscode.window.showErrorMessage(`Failed to execute script: ${error}`);
             this.updateScriptStatus(scriptPath, ExecutionStatus.Failed);
@@ -208,7 +206,6 @@ export class Executor implements vscode.Disposable {
     public async stopScript(scriptPath: string): Promise<void> {
         const runningScript = this.runningScripts.get(scriptPath);
         if (!runningScript) {
-            vscode.window.showInformationMessage('Script is not running');
             return;
         }
 
@@ -247,8 +244,6 @@ export class Executor implements vscode.Disposable {
         this.updateStatusBar();
         // Notify that the script has been stopped
         this.onScriptStatusChanged.fire(scriptPath);
-
-        vscode.window.showInformationMessage(`Stopped: ${scriptName}`);
     }
 
     private async ensureExecutable(scriptPath: string): Promise<void> {
@@ -259,7 +254,6 @@ export class Executor implements vscode.Disposable {
                         if (chmodErr) {
                             reject(`Failed to make script executable: ${chmodErr}`);
                         } else {
-                            vscode.window.showInformationMessage(`Made script executable: ${path.basename(scriptPath)}`);
                             resolve();
                         }
                     });
