@@ -28,7 +28,7 @@ export class UsageTracker {
     /**
      * Record a script execution
      */
-    public recordExecution(scriptPath: string, status: string = 'running'): void {
+    public recordExecution(scriptPath: string, status = 'running'): void {
         const usageData = this.getUsageData();
 
         if (!usageData[scriptPath]) {
@@ -61,7 +61,7 @@ export class UsageTracker {
     /**
      * Get the top N most frequently used scripts
      */
-    public getTopScripts(limit: number = 5): RecentlyUsedScript[] {
+    public getTopScripts(limit = 5): RecentlyUsedScript[] {
         const usageData = this.getUsageData();
 
         const scripts: RecentlyUsedScript[] = Object.entries(usageData).map(([scriptPath, data]) => ({

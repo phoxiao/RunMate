@@ -17,6 +17,7 @@ export class LogScanner implements vscode.Disposable {
     private onLogsChangedEmitter: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();
     public readonly onLogsChanged = this.onLogsChangedEmitter.event;
 
+    // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
     constructor(_configManager: ConfigManager) {
     }
 

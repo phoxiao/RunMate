@@ -23,7 +23,7 @@ export class TerminalManager implements vscode.Disposable {
     private statusBarItem: vscode.StatusBarItem;
     private onTerminalsChanged: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();
     public readonly onDidChangeTerminals = this.onTerminalsChanged.event;
-    private maxTerminalHistory: number = 10;
+    private maxTerminalHistory = 10;
 
     constructor(context: vscode.ExtensionContext) {
         // Create status bar item for terminal count
@@ -400,7 +400,6 @@ export class TerminalManager implements vscode.Disposable {
             this.statusBarItem.show();
         }
     }
-
 
     private generateTerminalId(): string {
         return `terminal_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;

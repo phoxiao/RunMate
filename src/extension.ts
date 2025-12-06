@@ -151,7 +151,6 @@ export async function activate(context: vscode.ExtensionContext) {
         context.subscriptions.push(openScriptCommand);
         console.log('RunMate: Open script command registered');
 
-
         const deleteScriptCommand = vscode.commands.registerCommand('runmate.deleteScript', async (scriptItem) => {
             if (!scriptItem || !scriptItem.filePath) {
                 vscode.window.showErrorMessage('No script selected');
@@ -262,7 +261,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 // Create quick pick items for each terminal
                 const items = terminals.map(t => {
                     const statusIcon = t.status === 'running' ? '▶' :
-                                       t.status === 'completed' ? '✓' : '✗';
+                        t.status === 'completed' ? '✓' : '✗';
                     const duration = t.endTime
                         ? `(${Math.round((t.endTime - t.startTime) / 1000)}s)`
                         : '(running)';

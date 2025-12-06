@@ -3,10 +3,18 @@ import { ScriptScanner } from './scriptScanner';
 import { Executor, ExecutionStatus } from './executor';
 import * as path from 'path';
 
+interface ScriptItem {
+    name: string;
+    path: string;
+    directory: string;
+    status: ExecutionStatus;
+    isRunning: boolean;
+}
+
 export class ScriptWebviewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'runmate.scriptWebview';
     private _view?: vscode.WebviewView;
-    private searchQuery: string = '';
+    private searchQuery = '';
 
     constructor(
         private readonly _extensionUri: vscode.Uri,
@@ -47,10 +55,11 @@ export class ScriptWebviewProvider implements vscode.WebviewViewProvider {
                 case 'stopScript':
                     await this.executor.stopScript(data.scriptPath);
                     break;
-                case 'openScript':
+                case 'openScript': {
                     const doc = await vscode.workspace.openTextDocument(data.scriptPath);
                     await vscode.window.showTextDocument(doc);
                     break;
+                }
                 case 'refresh':
                     await this.scriptScanner.scanScripts();
                     this.updateScriptList();
@@ -163,7 +172,7 @@ export class ScriptWebviewProvider implements vscode.WebviewViewProvider {
         }
 
         const allScripts = this.scriptScanner.getScripts();
-        const scriptList: any[] = [];
+        const scriptList: ScriptItem[] = [];
         const seenPaths = new Set<string>();
 
         // Filter and organize scripts, avoiding duplicates

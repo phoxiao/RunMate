@@ -11,7 +11,7 @@ export class SearchPanel {
         this.onSearchChange = onSearchChange;
     }
 
-    public show(currentQuery: string = ''): void {
+    public show(currentQuery = ''): void {
         if (this.panel) {
             this.panel.reveal();
             return;

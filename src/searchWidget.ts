@@ -2,8 +2,8 @@ import * as vscode from 'vscode';
 
 export class SearchWidget {
     private statusBarItem: vscode.StatusBarItem;
-    private isSearchActive: boolean = false;
-    private searchQuery: string = '';
+    private isSearchActive = false;
+    private searchQuery = '';
     private onSearchChange: (query: string) => void;
     private quickInput: vscode.QuickInput | undefined;
 

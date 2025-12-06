@@ -158,7 +158,6 @@ export class Executor implements vscode.Disposable {
 
             terminal.show();
 
-
             // Execute script in terminal
             const command = parameters ? `"${scriptPath}" ${parameters}` : `"${scriptPath}"`;
 
@@ -370,7 +369,6 @@ export class Executor implements vscode.Disposable {
             clearInterval(checkInterval);
         }, maxMonitorTime);
     }
-
 
     private updateScriptStatus(scriptPath: string, status: ExecutionStatus): void {
         const runningScript = this.runningScripts.get(scriptPath);

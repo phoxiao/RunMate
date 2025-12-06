@@ -2,10 +2,17 @@ import * as vscode from 'vscode';
 import { LogScanner } from './logScanner';
 import * as path from 'path';
 
+interface LogItem {
+    name: string;
+    path: string;
+    directory: string;
+    size: string;
+}
+
 export class LogWebviewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'runmate.logWebview';
     private _view?: vscode.WebviewView;
-    private searchQuery: string = '';
+    private searchQuery = '';
     private activeTab: 'scripts' | 'logs' = 'scripts';
 
     constructor(
@@ -100,7 +107,7 @@ export class LogWebviewProvider implements vscode.WebviewViewProvider {
         }
 
         const allLogs = this.logScanner.getLogs();
-        const logList: any[] = [];
+        const logList: LogItem[] = [];
 
         // Filter and organize logs
         for (const [dir, logs] of allLogs.entries()) {

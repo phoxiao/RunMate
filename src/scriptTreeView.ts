@@ -6,7 +6,7 @@ export class ScriptTreeProvider implements vscode.TreeDataProvider<ScriptItem> {
     private _onDidChangeTreeData: vscode.EventEmitter<ScriptItem | undefined | null | void> = new vscode.EventEmitter<ScriptItem | undefined | null | void>();
     readonly onDidChangeTreeData: vscode.Event<ScriptItem | undefined | null | void> = this._onDidChangeTreeData.event;
     private itemCache: Map<string, ScriptItem> = new Map();
-    private searchQuery: string = '';
+    private searchQuery = '';
     private treeView: vscode.TreeView<ScriptItem> | undefined;
     private searchStatusBarItem: vscode.StatusBarItem;
 

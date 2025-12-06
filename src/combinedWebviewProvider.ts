@@ -5,11 +5,32 @@ import { Executor, ExecutionStatus } from './executor';
 import { UsageTracker } from './usageTracker';
 import * as path from 'path';
 
+interface ScriptItem {
+    name: string;
+    path: string;
+    directory: string;
+    status: ExecutionStatus;
+    isRunning: boolean;
+    fileType: string;
+    fileExt: string;
+    executionCount?: number;
+    lastExecuted?: number;
+}
+
+interface LogItem {
+    name: string;
+    path: string;
+    directory: string;
+    size: string;
+    fileType: string;
+    fileExt: string;
+}
+
 export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'runmate.scriptWebview';
     private _view?: vscode.WebviewView;
-    private scriptSearchQuery: string = '';
-    private logSearchQuery: string = '';
+    private scriptSearchQuery = '';
+    private logSearchQuery = '';
     private activeTab: 'scripts' | 'logs' = 'scripts';
 
     constructor(
@@ -76,10 +97,11 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
                 case 'stopScript':
                     await this.executor.stopScript(data.scriptPath);
                     break;
-                case 'openScript':
+                case 'openScript': {
                     const scriptDoc = await vscode.workspace.openTextDocument(data.scriptPath);
                     await vscode.window.showTextDocument(scriptDoc);
                     break;
+                }
                 case 'refreshScripts':
                     await this.scriptScanner.scanScripts();
                     this.updateScriptList();
@@ -93,10 +115,11 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
                     this.logSearchQuery = data.value;
                     this.updateLogList();
                     break;
-                case 'openLog':
+                case 'openLog': {
                     const logDoc = await vscode.workspace.openTextDocument(data.logPath);
                     await vscode.window.showTextDocument(logDoc);
                     break;
+                }
                 case 'deleteLog':
                     await this.deleteLog(data.logPath);
                     break;
@@ -240,7 +263,7 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
         }
 
         const allScripts = this.scriptScanner.getScripts();
-        const scriptList: any[] = [];
+        const scriptList: ScriptItem[] = [];
         const seenPaths = new Set<string>();
 
         // Filter and organize scripts
@@ -275,7 +298,7 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
         }
 
         // Get recently used scripts
-        const recentlyUsedScripts: any[] = [];
+        const recentlyUsedScripts: ScriptItem[] = [];
         if (this.usageTracker) {
             const topScripts = this.usageTracker.getTopScripts(5);
             for (const recentScript of topScripts) {
@@ -320,7 +343,7 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
         }
 
         const allLogs = this.logScanner.getLogs();
-        const logList: any[] = [];
+        const logList: LogItem[] = [];
         const seenPaths = new Set<string>();
 
         // Filter and organize logs
