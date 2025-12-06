@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ScriptScanner } from './scriptScanner';
 import { LogScanner } from './logScanner';
 import { Executor, ExecutionStatus } from './executor';
+import { UsageTracker } from './usageTracker';
 import * as path from 'path';
 
 export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
@@ -16,7 +17,8 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
         private scriptScanner: ScriptScanner,
         private logScanner: LogScanner,
         private executor: Executor,
-        private context: vscode.ExtensionContext
+        private context: vscode.ExtensionContext,
+        private usageTracker?: UsageTracker
     ) {
         // Listen for script status changes
         this.executor.onStatusChanged(() => {
@@ -272,6 +274,34 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
             }
         }
 
+        // Get recently used scripts
+        const recentlyUsedScripts: any[] = [];
+        if (this.usageTracker) {
+            const topScripts = this.usageTracker.getTopScripts(5);
+            for (const recentScript of topScripts) {
+                // Check if script still exists
+                if (seenPaths.has(recentScript.scriptPath)) {
+                    const status = this.executor.getScriptStatus(recentScript.scriptPath);
+                    const scriptName = path.basename(recentScript.scriptPath);
+                    const fileExt = path.extname(scriptName).toLowerCase();
+                    const isShellScript = ['.sh', '.bash', '.zsh', '.fish', '.ksh'].includes(fileExt) ||
+                                         scriptName.endsWith('.command');
+
+                    recentlyUsedScripts.push({
+                        name: scriptName,
+                        path: recentScript.scriptPath,
+                        directory: path.dirname(recentScript.scriptPath),
+                        status: status,
+                        isRunning: status === ExecutionStatus.Running,
+                        fileType: isShellScript ? 'shell' : 'script',
+                        fileExt: fileExt,
+                        executionCount: recentScript.count,
+                        lastExecuted: recentScript.lastExecuted
+                    });
+                }
+            }
+        }
+
         // Get terminal counts for status display
         const terminalCounts = this.executor.getTerminalManager().getTerminalCounts();
 
@@ -279,6 +309,7 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
         this._view.webview.postMessage({
             type: 'updateScripts',
             scripts: scriptList,
+            recentlyUsed: recentlyUsedScripts,
             terminalCounts: terminalCounts
         });
     }
@@ -823,6 +854,62 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
                 ::-webkit-scrollbar-thumb:active {
                     background: var(--vscode-scrollbarSlider-activeBackground);
                 }
+
+                /* Recently Used Section */
+                .recently-used-section {
+                    margin-bottom: 8px;
+                    border-bottom: 1px solid var(--vscode-panel-border);
+                }
+
+                .recently-used-header {
+                    display: flex;
+                    align-items: center;
+                    padding: 8px 8px 6px 8px;
+                    background-color: var(--vscode-sideBar-background);
+                    font-size: 11px;
+                    font-weight: 600;
+                    color: var(--vscode-foreground);
+                    text-transform: uppercase;
+                    letter-spacing: 0.5px;
+                }
+
+                .recently-used-header .codicon {
+                    margin-right: 6px;
+                    font-size: 14px;
+                    color: var(--vscode-icon-foreground);
+                }
+
+                .recently-used-title {
+                    flex: 1;
+                }
+
+                .recently-used-content {
+                    padding-bottom: 4px;
+                }
+
+                .recent-script-item {
+                    padding-left: 8px;
+                }
+
+                .recent-script-item .item-info {
+                    display: flex;
+                    gap: 8px;
+                    align-items: center;
+                }
+
+                .execution-count {
+                    background-color: var(--vscode-badge-background);
+                    color: var(--vscode-badge-foreground);
+                    font-size: 10px;
+                    padding: 2px 6px;
+                    border-radius: 10px;
+                    font-weight: 600;
+                }
+
+                .last-executed {
+                    color: var(--vscode-descriptionForeground);
+                    font-size: 11px;
+                }
             </style>`;
     }
 
@@ -988,11 +1075,13 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
                 }
 
                 // Message handler
+                let recentlyUsedScripts = [];
                 window.addEventListener('message', event => {
                     const message = event.data;
                     switch (message.type) {
                         case 'updateScripts':
                             scripts = message.scripts;
+                            recentlyUsedScripts = message.recentlyUsed || [];
                             updateTerminalBar(message.terminalCounts);
                             renderScripts();
                             break;
@@ -1010,6 +1099,13 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
                         return;
                     }
 
+                    let html = '';
+
+                    // Render Recently Used section if available
+                    if (recentlyUsedScripts && recentlyUsedScripts.length > 0) {
+                        html += renderRecentlyUsedSection(recentlyUsedScripts);
+                    }
+
                     groupedScripts = {};
                     scripts.forEach(script => {
                         if (!groupedScripts[script.directory]) {
@@ -1018,13 +1114,97 @@ export class CombinedWebviewProvider implements vscode.WebviewViewProvider {
                         groupedScripts[script.directory].push(script);
                     });
 
-                    let html = '';
                     Object.keys(groupedScripts).sort().forEach(dir => {
                         const dirScripts = groupedScripts[dir];
                         html += renderScriptDirectory(dir, dirScripts);
                     });
 
                     scriptsView.innerHTML = html;
+                }
+
+                function renderRecentlyUsedSection(recentScripts) {
+                    const sectionId = 'recently_used_section';
+                    let html = \`
+                        <div class="recently-used-section">
+                            <div class="recently-used-header">
+                                <span class="codicon codicon-history"></span>
+                                <span class="recently-used-title">Recently Used</span>
+                            </div>
+                            <div class="recently-used-content" id="\${sectionId}">
+                    \`;
+
+                    recentScripts.forEach(script => {
+                        html += renderRecentlyUsedItem(script);
+                    });
+
+                    html += \`
+                            </div>
+                        </div>
+                    \`;
+
+                    return html;
+                }
+
+                function renderRecentlyUsedItem(script) {
+                    const statusClass = script.isRunning ? 'running' : '';
+
+                    // Determine icon based on file type and current theme
+                    let iconClass = '';
+                    let iconContent = '';
+
+                    if (script.isRunning) {
+                        iconClass = 'codicon codicon-loading codicon-modifier-spin';
+                    } else if (script.fileType === 'shell') {
+                        iconClass = 'file-icon shell-file';
+                        iconContent = getFileIcon(script.name, 'shell');
+                    } else {
+                        iconClass = 'file-icon script-file';
+                        iconContent = getFileIcon(script.name, 'script');
+                    }
+
+                    // Format last executed time
+                    const lastExecutedText = formatRelativeTime(script.lastExecuted);
+
+                    return \`
+                        <div class="item recent-script-item \${statusClass}"
+                             ondblclick="openScript('\${script.path}')"
+                             title="\${script.path}">
+                            <span class="item-icon \${iconClass}">\${iconContent}</span>
+                            <span class="item-name">\${script.name}</span>
+                            <div class="item-info">
+                                <span class="execution-count" title="Execution count">\${script.executionCount}×</span>
+                                <span class="last-executed" title="Last executed">\${lastExecutedText}</span>
+                            </div>
+                            <div class="item-actions">
+                                \${script.isRunning
+                                    ? \`<button class="action-button" onclick="stopScript('\${script.path}', event)" title="Stop"><span class="codicon codicon-debug-stop"></span></button>\`
+                                    : \`<button class="action-button" onclick="runScript('\${script.path}', event)" title="Run"><span class="codicon codicon-run"></span></button>\`
+                                }
+                                <button class="action-button" onclick="openScript('\${script.path}', event)" title="Open"><span class="codicon codicon-go-to-file"></span></button>
+                            </div>
+                        </div>
+                    \`;
+                }
+
+                function formatRelativeTime(timestamp) {
+                    const now = Date.now();
+                    const diffMs = now - timestamp;
+                    const diffSeconds = Math.floor(diffMs / 1000);
+                    const diffMinutes = Math.floor(diffSeconds / 60);
+                    const diffHours = Math.floor(diffMinutes / 60);
+                    const diffDays = Math.floor(diffHours / 24);
+
+                    if (diffSeconds < 60) {
+                        return 'just now';
+                    } else if (diffMinutes < 60) {
+                        return \`\${diffMinutes}m ago\`;
+                    } else if (diffHours < 24) {
+                        return \`\${diffHours}h ago\`;
+                    } else if (diffDays < 7) {
+                        return \`\${diffDays}d ago\`;
+                    } else {
+                        return new Date(timestamp).toLocaleDateString();
+                    }
                 }
 
                 function renderScriptDirectory(dir, dirScripts) {

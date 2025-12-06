@@ -5,12 +5,14 @@ import { LogScanner } from './logScanner';
 import { Executor } from './executor';
 import { ConfigManager } from './config';
 import { SecurityChecker } from './security';
+import { UsageTracker } from './usageTracker';
 
 let combinedWebviewProvider: CombinedWebviewProvider;
 let scriptScanner: ScriptScanner;
 let logScanner: LogScanner;
 let executor: Executor;
 let configManager: ConfigManager;
+let usageTracker: UsageTracker;
 
 export async function activate(context: vscode.ExtensionContext) {
     console.log('RunMate extension is now active');
@@ -19,7 +21,8 @@ export async function activate(context: vscode.ExtensionContext) {
         // Initialize all services first
         configManager = new ConfigManager();
         const securityChecker = new SecurityChecker(configManager);
-        executor = new Executor(context, securityChecker, configManager);
+        usageTracker = new UsageTracker(context.workspaceState);
+        executor = new Executor(context, securityChecker, configManager, usageTracker);
         scriptScanner = new ScriptScanner(configManager);
         logScanner = new LogScanner(configManager);
 
@@ -334,7 +337,8 @@ export async function activate(context: vscode.ExtensionContext) {
             scriptScanner,
             logScanner,
             executor,
-            context
+            context,
+            usageTracker
         );
 
         context.subscriptions.push(

@@ -5,6 +5,7 @@ import { ChildProcess } from 'child_process';
 import { SecurityChecker } from './security';
 import { ConfigManager } from './config';
 import { TerminalManager } from './terminalManager';
+import { UsageTracker } from './usageTracker';
 
 export enum ExecutionStatus {
     Idle = 'idle',
@@ -29,12 +30,15 @@ export class Executor implements vscode.Disposable {
     private onScriptStatusChanged: vscode.EventEmitter<string> = new vscode.EventEmitter<string>();
     public readonly onStatusChanged = this.onScriptStatusChanged.event;
     private terminalManager: TerminalManager;
+    private usageTracker?: UsageTracker;
 
     constructor(
         context: vscode.ExtensionContext,
         private securityChecker: SecurityChecker,
-        private configManager: ConfigManager
+        private configManager: ConfigManager,
+        usageTracker?: UsageTracker
     ) {
+        this.usageTracker = usageTracker;
         this.terminalManager = new TerminalManager(context);
         this.statusBarItem = vscode.window.createStatusBarItem(
             vscode.StatusBarAlignment.Left,
@@ -101,6 +105,11 @@ export class Executor implements vscode.Disposable {
     }
 
     public async executeScript(scriptPath: string, parameters: string): Promise<void> {
+        // Record script execution in usage tracker
+        if (this.usageTracker) {
+            this.usageTracker.recordExecution(scriptPath, 'running');
+        }
+
         // Get configuration first
         const config = vscode.workspace.getConfiguration('runmate');
         const reuseMode = config.get<'always' | 'never' | 'smart'>('terminalReuseMode', 'smart');
@@ -262,6 +271,11 @@ export class Executor implements vscode.Disposable {
         const runningScript = this.runningScripts.get(scriptPath);
         if (runningScript) {
             console.log(`RunMate: Script completed: ${scriptPath} with status: ${status}`);
+
+            // Update usage tracker with final status
+            if (this.usageTracker) {
+                this.usageTracker.updateStatus(scriptPath, status);
+            }
 
             // Clean up monitoring interval
             if (runningScript.intervalId) {
