@@ -87,6 +87,38 @@ src/
 └── security.ts        # Security checks
 ```
 
+### CI/CD
+
+This project uses GitHub Actions for continuous integration and deployment:
+
+- **Test Workflow**: Runs on every push and pull request
+  - Linting with ESLint
+  - Multi-platform testing (Windows, macOS, Linux)
+  - Node.js version matrix (18, 20)
+  - Automatic VSIX packaging
+
+- **Release Workflow**: Triggered by version tags (v*)
+  - Automated GitHub release creation
+  - VSIX file upload to release assets
+  - Optional publishing to VS Marketplace and Open VSX
+
+### Publishing Setup
+
+To enable automated publishing, configure these GitHub Secrets:
+
+1. **VS_MARKETPLACE_TOKEN** (Optional)
+   - Create a Personal Access Token in Azure DevOps
+   - Go to https://dev.azure.com/your-organization/_usersSettings/tokens
+   - Create new token with "Marketplace > Manage" scope
+   - Add as GitHub repository secret
+
+2. **OPEN_VSX_TOKEN** (Optional)
+   - Register at https://open-vsx.org/
+   - Generate access token from your profile
+   - Add as GitHub repository secret
+
+Without these tokens, the release workflow will still create GitHub releases with VSIX files for manual distribution.
+
 ## Requirements
 
 - VS Code 1.74.0 or higher
