@@ -2,7 +2,7 @@
   "name": "runmate",
   "displayName": "RunMate",
   "description": "Auto-discover and manage shell scripts in VS Code",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "publisher": "runmate",
   "repository": {
     "type": "git",
@@ -225,7 +225,11 @@
         "runmate.terminalReuseMode": {
           "type": "string",
           "default": "smart",
-          "enum": ["always", "never", "smart"],
+          "enum": [
+            "always",
+            "never",
+            "smart"
+          ],
           "enumDescriptions": [
             "Always reuse the same terminal for a script",
             "Always create new terminals (current behavior)",
@@ -242,7 +246,12 @@
         },
         "runmate.logFileTypes": {
           "type": "array",
-          "default": ["*.log", "*.out", "*.err", "*.txt"],
+          "default": [
+            "*.log",
+            "*.out",
+            "*.err",
+            "*.txt"
+          ],
           "description": "File patterns for log files to scan",
           "items": {
             "type": "string"
