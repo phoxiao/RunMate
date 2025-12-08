@@ -23,9 +23,7 @@
     "execute",
     "runner"
   ],
-  "activationEvents": [
-    "onStartupFinished"
-  ],
+  "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
     "viewsContainers": {
@@ -43,9 +41,7 @@
           "type": "webview",
           "id": "runmate.scriptWebview",
           "name": "Shell Scripts",
-          "icon": "$(terminal)",
-          "contextualTitle": "RunMate Scripts",
-          "visibility": "visible"
+          "icon": "$(terminal)"
         }
       ]
     },
