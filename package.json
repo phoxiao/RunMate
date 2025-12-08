@@ -2,7 +2,7 @@
   "name": "runmate",
   "displayName": "RunMate",
   "description": "Auto-discover and manage shell scripts in VS Code",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "publisher": "kivi",
   "repository": {
     "type": "git",
